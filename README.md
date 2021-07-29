@@ -1,7 +1,8 @@
 ## PathName
 
-This is a module which can helps you to configure folder structure with patterns. No more absolute paths, 
-no more hard coding. With `pathname` you can use paths via names with variables context!
+This is a module which can helps you to configure folder structure with named patterns. 
+No more absolute paths in scripts, no more hard coding. 
+With `pathname` you can generate paths via names with variables context!
 
 ```python
 import pathname
