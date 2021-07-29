@@ -1,5 +1,5 @@
 import os
-from fstree import FSTree
+from pathname import PNTree
 import pytest
 import tempfile
 
@@ -31,7 +31,7 @@ def context():
 
 @pytest.fixture()
 def tree(patterns):
-    return FSTree(ROOT, patterns)
+    return PNTree(ROOT, patterns)
 
 
 def test_unique_patterns(tree, context):

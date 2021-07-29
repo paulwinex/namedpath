@@ -1,4 +1,4 @@
-from fstree import FSTree
+from pathname import PNTree
 
 path_list = dict(
     PROJECT={
@@ -116,7 +116,7 @@ context = dict(
     frame=225
 )
 
-tree = FSTree(root_path='d:/projects', path_list=path_list)
+tree = PNTree(root_path='d:/projects', path_list=path_list)
 
 tree.check_uniqueness_of_parsing(context)
 # {'errors': {}, 'success': ['SHOT_FX', 'SHOT_COMP', 'ASSET_TEXTURES'...

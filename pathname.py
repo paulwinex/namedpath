@@ -13,7 +13,7 @@ if sys.version_info.major > 2:
     unicode = type
 
 
-class FSTree(object):
+class PNTree(object):
     """
     Класс, отвечающий за всю структуру. Содержит и управляет полным список путей.
     """
@@ -45,7 +45,7 @@ class FSTree(object):
         for path_name, options in path_list.items():
             if isinstance(options, str):
                 options = dict(path=options)
-            self._scope[path_name] = FSPath(path_name, options, self._scope)
+            self._scope[path_name] = PNPath(path_name, options, self._scope)
 
     def get_path(self, name, context, create=False):
         """
@@ -64,7 +64,7 @@ class FSTree(object):
         -------
         str
         """
-        ctl = self.get_path_instance(name)    # type: FSPath
+        ctl = self.get_path_instance(name)    # type: PNPath
         path = normpath(join(self.path, ctl.solve(context).lstrip('\\/')))
         if create and not exists(path):
             ctl.makedirs()
@@ -86,7 +86,7 @@ class FSTree(object):
 
         Returns
         -------
-        FSPath
+        PNPath
         """
         try:
             return self._scope[name]
@@ -117,7 +117,7 @@ class FSTree(object):
         list
         """
         match_names = []
-        for name, p in self._scope.items():  # type: FSPath
+        for name, p in self._scope.items():  # type: PNPath
             pattern = p.as_regex(self.path)
             m = re.match(pattern, path, re.IGNORECASE)
             if m:
@@ -176,7 +176,7 @@ class FSTree(object):
 
         Parameters
         ----------
-        other_tree: FSTree
+        other_tree: PNTree
             Структура в которую следует переместить файлы
         names_map: dict
             Картка соответствия ключей
@@ -197,7 +197,7 @@ class FSTree(object):
         """
 
 
-class FSPath(object):
+class PNPath(object):
     default_chmod = 0o755
 
     def __init__(self, name, options, scope, **kwargs):
