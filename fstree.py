@@ -1,6 +1,6 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
-from os.path import join, normpath, exists
+from os.path import join, normpath, exists, abspath, expanduser
 import copy
 import logging
 import re
@@ -19,7 +19,7 @@ class FSTree(object):
     """
 
     def __init__(self, root_path, path_list):
-        self._root_path = root_path
+        self._root_path = abspath(expanduser(root_path))
         self._scope = {}
         self._init_scope(path_list)
 
