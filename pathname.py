@@ -1,10 +1,9 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
-from os.path import join, normpath, exists, abspath, expanduser
+from os.path import join, normpath, exists, abspath, expanduser, expandvars
 import copy
 import logging
 import re
-import json
 import sys
 
 logger = logging.getLogger(__name__)
@@ -15,11 +14,11 @@ if sys.version_info.major > 2:
 
 class PNTree(object):
     """
-    Класс, отвечающий за всю структуру. Содержит и управляет полным список путей.
+    Class provide you to control folder structure paths
     """
 
     def __init__(self, root_path, path_list):
-        self._root_path = abspath(expanduser(root_path))
+        self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self._init_scope(path_list)
 
@@ -32,7 +31,7 @@ class PNTree(object):
     @property
     def path(self):
         """
-        Корневой путь структуры
+        Root path of tree
 
         Returns
         -------
@@ -41,7 +40,7 @@ class PNTree(object):
         return self._root_path
 
     def _init_scope(self, path_list):
-        """Создание инстансов паттернов"""
+        """Init all paths instances"""
         for path_name, options in path_list.items():
             if isinstance(options, str):
                 options = dict(path=options)
@@ -49,16 +48,16 @@ class PNTree(object):
 
     def get_path(self, name, context, create=False):
         """
-        Получить полный путь по имени и контексту
+        Get full path by name and context
 
         Parameters
         ----------
         name: str
-            Имя паттерна
+            Path name
         context: dict
-            Контекст ресолвинга переменных
+            Variables
         create: bool
-            Создать запрашиваемый путь
+            Create path now if not exists
 
         Returns
         -------
@@ -71,14 +70,36 @@ class PNTree(object):
         return path
 
     def get_raw_path(self, name):
+        """
+        Raw path with unexpanded variables
+
+        Parameters
+        ----------
+        name: str
+
+        Returns
+        -------
+        str
+        """
         return self.get_path_instance(name).get_full_path()
 
     def get_raw_pattern(self, name):
+        """
+        Raw path with unexpanded variables and parent pattern
+
+        Parameters
+        ----------
+        name: str
+
+        Returns
+        -------
+        str
+        """
         return self.get_path_instance(name).path
 
     def get_path_instance(self, name):
         """
-        Инстанс класса управляющего конкретным паттерном
+        Get PNPath instance by name
 
         Parameters
         ----------
@@ -95,7 +116,7 @@ class PNTree(object):
 
     def get_path_names(self):
         """
-        Список имён паттернов текущей структуры
+        List of all pattern names in current tree
 
         Returns
         -------
@@ -105,16 +126,16 @@ class PNTree(object):
 
     def parse(self, path, with_variables=False):
         """
-        Определение имени пути по готовому пути
+        Reverse existing path to a pattern name
 
         Parameters
         ----------
-        path
-        with_variables
+        path: str
+        with_variables: bool
 
         Returns
         -------
-        list
+        str or list
         """
         match_names = []
         for name, p in self._scope.items():  # type: PNPath
@@ -133,9 +154,10 @@ class PNTree(object):
 
     def check_uniqueness_of_parsing(self, full_context):
         """
-        Поверка уникальности путей, то есть возможность однозначно найти имя по готовому пути.
-        Для проверки требуется контекст, который подойдет для всех паттернов.
-        Эта проверка используется на этапе разработки структуры.
+        Checking your patterns for uniques.
+        Each path should be reversible without match with other patterns.
+        This checking require full context with variables for all patterns.
+        Use this method when you develop your structure.
 
         Parameters
         ----------
@@ -155,10 +177,10 @@ class PNTree(object):
                 parsed_name = self.parse(path)
             except NoPatternMatchError as e:
                 print(str(e))
-                result['errors'][name] = str(e)
+                result['errors'][name] = 'Error: '+str(e)
             except MultiplePatternMatchError as e:
                 print(str(e))
-                result['errors'][name] = str(e)
+                result['errors'][name] = 'Error: '+str(e)
             else:
                 if parsed_name != name:
                     result['errors'][name] = 'Generated and parsed names not match: {} -> {}'.format(name, parsed_name)
@@ -169,21 +191,20 @@ class PNTree(object):
         print('Errors:', len(result['errors']))
         return result
 
-    def transfer_to(self, other_tree, names_map=None, move=True, cleanup=True):
+    def transfer_to(self, other_tree, names_map=None, move=False):
         """
-        Перемещение файлов из одной структуры в другую.
-        Состав имён путей должен совпадать. Если именя различаются можно указать карту переименования.
+        Move files from one tree to other.
+        All names must be matched or have rename map.
 
         Parameters
         ----------
         other_tree: PNTree
-            Структура в которую следует переместить файлы
+            Target tree
         names_map: dict
-            Картка соответствия ключей
+            rename map
         move: bool
-            Копировать или перемещать
-        cleanup: bool
-            Удалить старую структуру
+            Copy or move files
+
         Returns
         -------
         dict
@@ -192,12 +213,13 @@ class PNTree(object):
 
     def check_paths_attributes(self, fix=False):
         """
-        Рекурсивный поиск всех имеющихся директорий в структуре
-        и проверка их атрибутов в соответствии с опциями из конфига
+        Recursive searching and checking all of existing paths and fix them attributes
         """
+        raise NotImplementedError
 
 
 class PNPath(object):
+    """Class provide logic of one single named path"""
     default_chmod = 0o755
 
     def __init__(self, name, options, scope, **kwargs):
@@ -214,11 +236,18 @@ class PNPath(object):
 
     @property
     def path(self):
+        """
+        Raw path
+
+        Returns
+        -------
+        str
+        """
         return self.options['path']
 
     def solve(self, context):
         """
-        Ресолвинг пути из паттерна используя контекст
+        Resolve path from pattern with context to relative path
 
         Parameters
         ----------
@@ -233,7 +262,7 @@ class PNPath(object):
 
     def expand_variables(self, text, variables):
         """
-        Ресолвинг переменных
+        Resolve variables in pattern
 
         Parameters
         ----------
@@ -251,11 +280,11 @@ class PNPath(object):
 
     def get_full_path(self):
         """
-        Полный путь включая родительские паттерны
+        Full path include parent patterns
 
         Returns
         -------
-
+        str
         """
         par = self.get_parent()
         if par:
@@ -267,11 +296,18 @@ class PNPath(object):
             return self.path
 
     def relative(self):
+        """
+        Relative path without parent pattern
+
+        Returns
+        -------
+        str
+        """
         return self.path.split(']', 1)[-1].lstrip('\\/')
 
     def variables(self):
         """
-        Извлечение имён переменных из пути
+        Extract variables names from pattern
 
         Returns
         -------
@@ -283,6 +319,13 @@ class PNPath(object):
         return variables
 
     def get_parent(self):
+        """
+        Get controller of parent pattern
+
+        Returns
+        -------
+        PNPath
+        """
         match = re.search(r"^\[(\w+)]/?(.*)", self.path)
         if match:
             try:
@@ -292,12 +335,12 @@ class PNPath(object):
 
     def as_pattern(self, prefix=None):
         """
-        Паттерн пути в виде glob-паттерна
+        Convert pattern to glob-pattern
 
         Parameters
         ----------
         prefix: str
-            Корневой путь если есть. По умолчанию путь релятивный.
+            Root path
 
         Returns
         -------
@@ -310,18 +353,23 @@ class PNPath(object):
 
     def as_regex(self, prefix=None, named_values=True):
         """
-        Паттерн пути в виде regex-паттерна
+        Convert pattern to regex
 
         Parameters
         ----------
         prefix: str
-            Корневой путь если есть. По умолчанию путь релятивный.
+            Root path
         named_values: bool
+            Make named groups in regex
 
         Returns
         -------
         str
         """
+        # simple_pattern = r'[\w\d\s:|"\'-]+'
+        simple_pattern = r'[^\/\\]+'
+        # named_pattern = r'(?P<%s>[\w\d\s:|"\'-]+)'
+        named_pattern = r'(?P<%s>[^\/\\]+)'
         path = self.get_full_path()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
@@ -330,46 +378,51 @@ class PNPath(object):
 
         def get_subpattern(match):
             v = match.group(0)
-            name = v.strip('{}').split(':')[0]
+            name = v.strip('{}').split(':')[0].split('|')[0].lower()
             if name in names:
-                return r'[\w\d]+'
+                return simple_pattern
             names.append(name)
-            return r'(?P<%s>[\w\d\s:|"\'-]+)' % name.lower().split('|')[0].split(':')[0]
+            if named_values:
+                return named_pattern % name
+            else:
+                return simple_pattern
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
         pattern = '^%s$' % pattern
         return pattern
 
     @property
     def chmod(self):
+        """chmod parameter"""
         return self.options.get('chmod', self.default_chmod)
 
     @property
-    def groups(self):
-        return self.options.get('chmod', [])
-
-    @property
     def chown(self):
+        """chown parameter"""
         return self.options.get('chown', [])
 
-    def makedirs(self):
-        pass
+    @property
+    def groups(self):
+        """groups parameter"""
+        return self.options.get('chmod', [])
+
+    def makedirs(self, *args):
+        """Create dirs"""
 
 
 class CustomFormatString(str):
     """
-    Класс с дополнительной обработкой строки с помощью стандартных методов строки.
-    Класс может быть использован как обычный объект строки.
-    Можно указывать несколько методов через символ |
-    Аргументы методов следует указывать после имени метода через знак :
-    Аргументы должны быть в формате JSON через пробел
+    Extended string with advanced formatting.
+    You can use this class as generic string object
+    You can set multiple methods using character |
+    Define arguments like in usual code
 
-    >>> CustomFormatString('NAME_{value|upper}').format(value='e01s03')
+    >>> CustomFormatString('NAME_{value()|upper()}').format(value='e01s03')
     >>> 'NAME_E01S03'
-    Можно указывать несоклько методов
-    >>> CustomFormatString('name_{value|lower|strip}').format(value=' E01S03  ')
+    Multiple methods
+    >>> CustomFormatString('name_{value|lower()|strip()}').format(value=' E01S03  ')
     >>> 'name_e01s03'
-    Аргументы методов
-    >>> CustomFormatString('{value|strip|center:10 "-"}').format(value=' E01S03  ')
+    Methods with arguments
+    >>> CustomFormatString('{value|strip()|center(10, "-")}').format(value=' E01S03  ')
     >>> '--E01S03--'
 
     """
@@ -377,50 +430,43 @@ class CustomFormatString(str):
 
     def format(self, *args, **kwargs):
         context = copy.deepcopy(kwargs)
-        variables = re.findall(r"({([\w\d%s]+([:\w\d\s.,'\"-_|]+)?)})" % self.sep, self)
-        for full_pat, expr, _ in variables:
-            # break
+        variables = re.findall(r"({([\w\d_:]+)([%s\w]+\(.*?\))?})" % self.sep, self)
+        for full_pat, var, expr in variables:
             if self.sep in expr:
-                v, methods = expr.split(self.sep, 1)
-                methods = methods.split(self.sep)
-                self = CustomFormatString(str.replace(self, full_pat, '{%s}' % v))
-                val = context.get(v.split(':')[0])
+                methods = expr.split(self.sep)
+                _self = CustomFormatString(str.replace(self, full_pat, '{%s}' % var))
+                val = context.get(var.split(':')[0])
                 if not val:
-                    raise ValueError('No value {} in {}'.format(v, context.keys()))
+                    raise ValueError('No value {} in {}'.format(var, context.keys()))
                 for m in methods:
-                    # break
-                    cmd, args = self.parse_args(m)
-                    val = getattr(val, cmd)(*args)
-                context[v] = val
+                    if not m:
+                        continue
+                    expression_to_eval = 'val.%s' % m
+                    print(expression_to_eval)
+                    val = eval(expression_to_eval)
+                context[var] = val
+                self = _self
         return str.format(self, **context)
-        # return str.format(self, *args, **context)
 
-    def parse_args(self, method):
-        if not isinstance(method, str):
-            method = method.encode()
-        if ':' in method:
-            cmd, _args = method.split(':', 1)
-            args = [x.strip() for x in self.split_args(_args)]
-            args = list(map(json.loads, args))
-            args = [x.encode() if isinstance(x, unicode) else x for x in args]
+
+class CustomException(Exception):
+    msg = ''
+
+    def __init__(self, *args, **kwargs):
+        if args:
+            super(CustomException, self).__init__(*args)
         else:
-            cmd = method
-            args = ()
-        return cmd, args
-
-    def split_args(self, args):
-        args_array = [x for x in re.split(r"('.*?'|\".*?\"|\S+)", args) if x.strip()]
-        return args_array
+            super(CustomException, self).__init__(self.msg)
 
 
-class PathNameError(Exception):
-    pass
+class PathNameError(CustomException):
+    msg = 'Path name error'
 
 
-class MultiplePatternMatchError(Exception):
-    pass
+class MultiplePatternMatchError(CustomException):
+    msg = 'Multiple pattern match'
 
 
-class NoPatternMatchError(Exception):
-    pass
+class NoPatternMatchError(CustomException):
+    msg = 'No patterns names match'
 
