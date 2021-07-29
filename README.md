@@ -20,7 +20,7 @@ context = {
     'project_name': 'project1',
     'shot_name': 'sh01',
     'file_name': 'test_render',
-    'VERSION': 15,
+    'version': 15,
     'ext': 'exr',
     'frame': '%04d'
 }
