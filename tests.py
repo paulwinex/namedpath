@@ -39,12 +39,14 @@ def test_unique_patterns(tree, context):
 
 
 def test_pattern_creation(tree, patterns):
-    assert tree.get_path_names() == tuple(patterns.keys())
+    assert set(tree.get_path_names()) == set(patterns.keys())
 
 
 def test_paths_solving(tree, context):
     assert tree.get_path('PROJECT', context) == os.path.normpath(ROOT + '\example')
-    assert tree.get_path('SHOT_PUBLISH', context) == os.path.normpath(ROOT + r'example\shot\sh001\publish\v015\sh001_v015.exr')
+    p1 = tree.get_path('SHOT_PUBLISH', context)
+    p2 = os.path.normpath(os.path.join(ROOT, r'example\shot\sh001\publish\v015\sh001_v015.exr'))
+    assert p1 == p2, '{} != {}'.format(p1, p2)
 
 
 def test_parsing(tree, context):
