@@ -1,13 +1,17 @@
 from pathname import PNTree
 
 path_list = dict(
+    MNT_SHOTS='{MNT_SHOTS}',
     PROJECT='{PROJECT_NAME}',
     CONFIG={
         'path': '[PROJECT]/.config',
         'groups': []
     },
     # SHOTS #########################################
-    SHOTS='[PROJECT]/shots',
+    SHOTS={
+        'path': '[PROJECT]/shots',
+        'symlink_to': '[MNT_SHOTS]'
+    },
     SEQUENCE='[SHOTS]/{SEQUENCE}',
     SHOT='[SEQUENCE]/{ENTITY_NAME}',
     SHOT_CAMERA='[SHOT]/camera',
@@ -20,15 +24,28 @@ path_list = dict(
     SHOT_RENDER='[SHOT]/render',
     SHOT_TEMP={
         'path': '[SHOT]/temp',
-        'chmod': 0o777
+        'dirs_chmod': 0o777
     },
     SHOT_RENDER_PUBLISH={
         'path': '[SHOT_RENDER]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}_{FRAME:05d}.{EXT}',
-        'defaults': {'EXT': 'exr'}
+        'defaults': {'EXT': 'exr'},
+
+        'chmod': [
+            0o755,   # access mode for "publish" dir
+            None,    # from default
+            '0o644'    # access mode for publish file
+        ],
+        'users':
+            ['root',    # owner of "publish" dir
+             None,      # default (current user)
+             '{USER}'   # owner of file (from context)
+             ],
+        'groups': 'root'     # group "root" for all dirs and files
     },
     SHOT_RENDER_TEMP={
         'path': '[SHOT_RENDER]/temp/{ENTITY_NAME}/{FILENAME}.{EXT}',
-        'defaults': {'filename': 'datetime_name()', 'EXT': 'exr'}
+        'defaults': {'filename': 'datetime_name()', 'EXT': 'exr'},
+        'groups': ['root', 'admin']
     },
     SHOT_ANIMATION='[SHOT]/animation',
     SHOT_ANIMATION_PUBLISH_SCENE={
@@ -70,7 +87,7 @@ context = dict(
     frame=225
 )
 
-tree = PNTree(root_path='d:/projects', path_list=path_list)
+tree = PNTree(root_path='d:/projects', path_list=path_list, context=context, default_group='paul')
 
 tree.check_uniqueness_of_parsing(context)
 # {'errors': {}, 'success': ['SHOT_FX', 'SHOT_COMP', 'ASSET_TEXTURES'...
@@ -80,7 +97,11 @@ path = tree.get_path('SHOT', context)
 # 'd:\\projects\\example\\shots\\03s001\\03s001_0010'
 tree.parse(path)
 # 'SHOT'
-path2 = tree.get_path('SHOT_RENDER_PUBLISH', context)
+path2 = tree.get_path('SHOT_RENDER_PUBLISH')
+
+
+
+
 tree.parse(path2)
 # 'SHOT_RENDER_PUBLISH'
 tree.parse(path2, with_variables=True)

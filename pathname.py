@@ -1,5 +1,7 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
+
+import os.path
 from os.path import join, normpath, exists, abspath, expanduser, expandvars
 import copy
 import logging
@@ -17,7 +19,9 @@ class PNTree(object):
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path, path_list):
+    def __init__(self, root_path, path_list, context=None, **kwargs):
+        self.kwargs = kwargs
+        self.context = context
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self._init_scope(path_list)
@@ -44,9 +48,9 @@ class PNTree(object):
         for path_name, options in path_list.items():
             if isinstance(options, str):
                 options = dict(path=options)
-            self._scope[path_name] = PNPath(path_name, options, self._scope)
+            self._scope[path_name] = PNPath(path_name, options, self._scope, context=self.context, **self.kwargs)
 
-    def get_path(self, name, context, create=False):
+    def get_path(self, name, context=None, create=False):
         """
         Get full path by name and context
 
@@ -65,9 +69,14 @@ class PNTree(object):
         """
         ctl = self.get_path_instance(name)    # type: PNPath
         path = normpath(join(self.path, ctl.solve(context).lstrip('\\/')))
-        if create and not exists(path):
-            ctl.makedirs()
+        if create and not exists(path) and not os.path.splitext(path)[1]:
+            os.makedirs(path)
         return path
+
+    def iter_path(self, name, context=None):
+        ctl = self.get_path_instance(name)    # type: PNPath
+        for part in ctl.iter_parts(context):
+            yield os.path.join(self.path, part)
 
     def get_raw_path(self, name):
         """
@@ -211,28 +220,88 @@ class PNTree(object):
         """
         raise NotImplementedError
 
-    def check_paths_attributes(self, fix=False):
+    def check_paths_attributes(self, *names, fix=False):
         """
         Recursive searching and checking all of existing paths and fix them attributes
         """
         raise NotImplementedError
 
+    def makedirs(self, *names, context=None):
+        """Create dirs"""
+
+    def update_attributes(self, *names, **kwargs):
+        if os.name == 'nt':
+            raise NotImplementedError('Change attributes on Windows not supported yet')
+        names = names or self.get_path_names()
+        for name in names:
+            ok = True
+            try:
+                self.update_path_chown(name, **kwargs)
+            except Exception as e:
+                print(name, e)
+                ok = False
+            try:
+                self.update_path_chmod(name, **kwargs)
+            except Exception as e:
+                print(name, e)
+                ok = False
+            if ok:
+                print(name, 'OK')
+
+    def update_path_chown(self, name, **kwargs):
+        if os.name == 'nt':
+            raise NotImplementedError('Change owner on Windows not supported yet')
+        import pwd
+        import grp
+
+        path_ctl = self.get_path_instance(name)
+        groups, users = path_ctl.get_group_list(**kwargs), path_ctl.get_user_list(**kwargs)
+        if len(users) != len(groups):
+            raise ValueError('Different length of parameters: {} and {}'.format(users, groups))
+        for user, group, rel_path in zip(users, groups, path_ctl.iter_parts(kwargs)):
+            path = os.path.normpath(os.path.join(self.path, rel_path))
+            if os.path.exists(path):
+                uid = pwd.getpwnam(user).pw_uid
+                gid = grp.getgrnam(group).gr_gid
+                os.chown(path, uid, gid)
+            else:
+                logger.warning('Path not exists: {}'.format(path))
+
+    def update_path_chmod(self, name, **kwargs):
+        if os.name == 'nt':
+            raise NotImplementedError('Change mod on Windows not supported yet')
+        path_ctl = self.get_path_instance(name)
+        mod_list = path_ctl.get_chmod_list()
+        for mod, rel_path in zip(mod_list, path_ctl.iter_parts(kwargs)):
+            path = os.path.normpath(os.path.join(self.path, rel_path))
+            if os.path.exists(path):
+                os.chmod(path, mod)
+            else:
+                logger.warning('Path not exists: {}'.format(path))
+
 
 class PNPath(object):
     """Class provide logic of one single named path"""
-    default_chmod = 0o755
+    default_dir_chmod = 0o755
+    default_file_chmod = 0o644
 
-    def __init__(self, name, options, scope, **kwargs):
+    def __init__(self, name, options, scope, context=None, **kwargs):
         self.name = name
         self.options = options
         self._scope = scope
         self.kwargs = kwargs
+        self.context = context or {}
 
     def __str__(self):
         return self.path
 
     def __repr__(self):
         return '<FSPath %s>' % self.path
+
+    def get_context(self, context=None):
+        ctx = copy.deepcopy(self.context)
+        ctx.update(context or {})
+        return ctx
 
     @property
     def path(self):
@@ -245,7 +314,7 @@ class PNPath(object):
         """
         return self.options['path']
 
-    def solve(self, context):
+    def solve(self, context=None):
         """
         Resolve path from pattern with context to relative path
 
@@ -260,20 +329,20 @@ class PNPath(object):
         path = self.get_full_path()
         return self.expand_variables(path, context)
 
-    def expand_variables(self, text, variables):
+    def expand_variables(self, text, context):
         """
         Resolve variables in pattern
 
         Parameters
         ----------
         text: str
-        variables: dict
+        context: dict
 
         Returns
         -------
         str
         """
-        ctx = copy.deepcopy(variables)
+        ctx = self.get_context(context or {})
         for k, v in self.options.get('defaults', {}).items():
             ctx.setdefault(k, v)
         return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
@@ -303,7 +372,7 @@ class PNPath(object):
         -------
         str
         """
-        return self.path.split(']', 1)[-1].lstrip('\\/')
+        return normpath(self.path.split(']', 1)[-1].lstrip('\\/'))
 
     def variables(self):
         """
@@ -390,23 +459,61 @@ class PNPath(object):
         pattern = '^%s$' % pattern
         return pattern
 
-    @property
-    def chmod(self):
+    def get_parts(self):
+        return self.relative().split(os.path.sep)
+
+    def iter_parts(self, context=None):
+        path = os.path.normpath(self.expand_variables(self.relative(), self.get_context(context)))
+        par = self.get_parent()
+        par_path = par.solve(self.get_context(context)) if par else ''
+        tail = ''
+        for part in path.split(os.path.sep):
+            tail = os.path.join(tail, part)
+            yield os.path.join(par_path, tail)
+
+    def get_chmod_list(self):
         """chmod parameter"""
-        return self.options.get('chmod', self.default_chmod)
+        mode_list = self._get_list(self.options.get('chmod'))
+        mode_list = [self._valid_mode(x) for x in mode_list]
+        return mode_list
 
-    @property
-    def chown(self):
-        """chown parameter"""
-        return self.options.get('chown', [])
+    def get_group_list(self, default_group=None, **kwargs):
+        return self.get_list_by_value_name('groups', 'default_group', default_group, **kwargs)
 
-    @property
-    def groups(self):
-        """groups parameter"""
-        return self.options.get('chmod', [])
+    def get_user_list(self, default_user=None, **kwargs):
+        return self.get_list_by_value_name('users', 'default_user', default_user, **kwargs)
 
-    def makedirs(self, *args):
-        """Create dirs"""
+    def get_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs):
+        default_value = default_value or (self.kwargs.get(default_value_key) if default_value_key else None)
+        list_length = len(self.get_parts())
+        value_list = self._get_list(self.options.get(value))
+        value_list = [x if x is not None else default_value for x in value_list]
+        if len(value_list) < list_length:
+            value_list.extend([default_value]*(list_length-list_length))
+        return [self.expand_variables(x, kwargs) for x in value_list]
+
+    def _get_list(self, values, default=None):
+        list_length = len(self.get_parts())
+        if not isinstance(values, (list, tuple)):
+            values = [values]*list_length
+        values = [x if x is not None else default for x in values]
+        return values
+
+    def _valid_mode(self, value):
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return oct(value)
+        if isinstance(value, bytes):
+            value = value.decode()
+        if isinstance(value, str):
+            if value.isdigit():
+                # '0755'
+                return oct(int('0o%s' % value, 8))
+            elif re.match(r"^\do\d+$", value):
+                # '0o755'
+                return oct(int(value, 8))
+        raise ValueError('Wrong mode: {}'.format(value))
 
 
 class CustomFormatString(str):
