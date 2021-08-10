@@ -1,4 +1,4 @@
-from pathname import PNTree
+from namedpath import PNTree
 
 path_list = dict(
     MNT_SHOTS='{MNT_SHOTS}',

@@ -1,5 +1,5 @@
 import os
-from pathname import PNTree
+from namedpath import PNTree
 import pytest
 import tempfile
 
