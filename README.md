@@ -1,6 +1,6 @@
 ## NamedPath
 
-This is a module which can helps you to configure folder structure with named patterns. 
+This is a module which can help you to configure folder structure with named patterns. 
 No more absolute paths in scripts, no more hard coding. 
 With `namedpath` you can generate paths via names with variables context!
 
@@ -18,7 +18,7 @@ path_list = dict(
     RENDER_PUBLISH='[RENDER]/{VERSION:04d}/{FILE_NAME}_{FRAME}.{EXT}',
 )
 # create tree instance
-tree = namedpath.PNTree('~/my_projects', path_list)
+tree = namedpath.NamedPathTree('~/my_projects', path_list)
 # define context
 context = {
     'project_name': 'project1',
@@ -34,7 +34,7 @@ print(tree.get_path('RENDER_PUBLISH', context))
 
 # you can change any patterns and no need change the code after that
 path_list['RENDER_PUBLISH'] = '[RENDER]/publish/v{VERSION:05d}/{SHOT_NAME}_rnd_{FRAME}.{EXT}'
-tree = namedpath.PNTree('~/my_projects', path_list)
+tree = namedpath.NamedPathTree('~/my_projects', path_list)
 print tree.get_path('RENDER_PUBLISH', context)
 # C:\Users\username\my_projects\project1\shots\sh01\render\publish\v00015\sh01_rnd_%04d.exr
 ```
