@@ -145,7 +145,7 @@ class NamedPathTree(object):
         -------
         tuple
         """
-        return tuple(self._scope.keys())
+        return tuple(sorted(self._scope.keys()))
 
     def parse(self, path, with_variables=False):
         """
@@ -177,16 +177,6 @@ class NamedPathTree(object):
 
     def filter_paths(self, root_path=None, name_in=None):
         pass
-
-    def get_possible_paths(self, names=None, context=None):
-        names = names or self.get_path_names()
-        paths = set()
-        for name in names:
-            solved = self.get_path_instance(name).solve_possible(context)
-            if solved:
-                paths.add(solved)
-        possible_paths = [os.path.join(self.path, p) for p in paths]
-        return tuple(sorted(possible_paths))
 
     # check
 
@@ -243,54 +233,8 @@ class NamedPathTree(object):
     # attributes
 
     def update_attributes(self, names, context, **kwargs):
-        if os.name == 'nt':
-            raise NotImplementedError('Change attributes on Windows not supported yet')
-        names = names or self.get_path_names()
-        for name in names:
-            ok = True
-            try:
-                self.update_path_chown(name, context, **kwargs)
-            except Exception as e:
-                print(name, e)
-                ok = False
-            try:
-                self.update_path_chmod(name, **kwargs)
-            except Exception as e:
-                print(name, e)
-                ok = False
-            if ok:
-                print(name, 'OK')
-
-    # def update_path_chown(self, name, context, **kwargs):
-    #     if os.name == 'nt':
-    #         raise NotImplementedError('Change owner on Windows not supported yet')
-    #     import pwd
-    #     import grp
-    #
-    #     path_ctl = self.get_path_instance(name)
-    #     groups, users = path_ctl.get_group_list(**kwargs), path_ctl.get_user_list(**kwargs)
-    #     if len(users) != len(groups):
-    #         raise ValueError('Different length of parameters: {} and {}'.format(users, groups))
-    #     for user, group, rel_path in zip(users, groups, path_ctl.iter_parts(context)):
-    #         path = os.path.normpath(os.path.join(self.path, rel_path))
-    #         if os.path.exists(path):
-    #             uid = pwd.getpwnam(user).pw_uid
-    #             gid = grp.getgrnam(group).gr_gid
-    #             os.chown(path, uid, gid)
-    #         else:
-    #             logger.warning('Path not exists: {}'.format(path))
-    #
-    # def update_path_chmod(self, name, **kwargs):
-    #     if os.name == 'nt':
-    #         raise NotImplementedError('Change mod on Windows not supported yet')
-    #     path_ctl = self.get_path_instance(name)
-    #     mod_list = path_ctl.get_chmod_list()
-    #     for mod, rel_path in zip(mod_list, path_ctl.iter_parts(kwargs)):
-    #         path = os.path.normpath(os.path.join(self.path, rel_path))
-    #         if os.path.exists(path):
-    #             os.chmod(path, mod)
-    #         else:
-    #             logger.warning('Path not exists: {}'.format(path))
+        raise NotImplementedError
+        # TODO
 
     # utils
 
