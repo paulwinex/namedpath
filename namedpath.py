@@ -1,27 +1,40 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
-
 import os.path
+import glob
 from os.path import join, normpath, exists, abspath, expanduser, expandvars
 import copy
 import logging
+import getpass
 import re
 import sys
 
+if sys.version_info.major < 3:
+    string_types = basestring,
+else:
+    string_types = str,
+
+
+def __setup_simple_logger(lg):      # type: (logging.Logger) -> logging.Logger
+    lg.addHandler(logging.StreamHandler())
+    return lg
+
+
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger = __setup_simple_logger(logger)
 
 if sys.version_info.major > 2:
     unicode = type
 
 
-class PNTree(object):
+class NamedPathTree(object):
     """
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path, path_list, context=None, **kwargs):
+    def __init__(self, root_path, path_list, **kwargs):
         self.kwargs = kwargs
-        self.context = context
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self._init_scope(path_list)
@@ -30,7 +43,9 @@ class PNTree(object):
         return self.path
 
     def __repr__(self):
-        return '<FSTree "{}">'.format(self.path)
+        return '<NamedPathTree "{}">'.format(self.path)
+
+    # props
 
     @property
     def path(self):
@@ -48,9 +63,12 @@ class PNTree(object):
         for path_name, options in path_list.items():
             if isinstance(options, str):
                 options = dict(path=options)
-            self._scope[path_name] = PNPath(path_name, options, self._scope, context=self.context, **self.kwargs)
+            path_name = path_name.upper()
+            self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
 
-    def get_path(self, name, context=None, create=False):
+    # get path
+
+    def get_path(self, name, context=None, skip_context_errors=False, create=False, **kwargs):
         """
         Get full path by name and context
 
@@ -60,6 +78,7 @@ class PNTree(object):
             Path name
         context: dict
             Variables
+        skip_context_errors: bool
         create: bool
             Create path now if not exists
 
@@ -67,16 +86,11 @@ class PNTree(object):
         -------
         str
         """
-        ctl = self.get_path_instance(name)    # type: PNPath
-        path = normpath(join(self.path, ctl.solve(context).lstrip('\\/')))
-        if create and not exists(path) and not os.path.splitext(path)[1]:
-            os.makedirs(path)
+        ctl = self.get_path_instance(name)    # type: NamedPath
+        path = ctl.solve(context, skip_context_errors=skip_context_errors, **kwargs)
+        if create and not exists(path):
+            ctl.makedirs(context, skip_context_errors=skip_context_errors)
         return path
-
-    def iter_path(self, name, context=None):
-        ctl = self.get_path_instance(name)    # type: PNPath
-        for part in ctl.iter_parts(context):
-            yield os.path.join(self.path, part)
 
     def get_raw_path(self, name):
         """
@@ -90,7 +104,7 @@ class PNTree(object):
         -------
         str
         """
-        return self.get_path_instance(name).get_full_path()
+        return self.get_path_instance(name).get_relative()
 
     def get_raw_pattern(self, name):
         """
@@ -116,12 +130,12 @@ class PNTree(object):
 
         Returns
         -------
-        PNPath
+        NamedPath
         """
         try:
-            return self._scope[name]
+            return self._scope[name.upper()]
         except KeyError:
-            raise PathNameError('Pattern named {} not found'.format(name))
+            raise PathNameError('Pattern named {} not found'.format(name.upper()))
 
     def get_path_names(self):
         """
@@ -147,7 +161,7 @@ class PNTree(object):
         str or list
         """
         match_names = []
-        for name, p in self._scope.items():  # type: PNPath
+        for name, p in self._scope.items():  # type: NamedPath
             pattern = p.as_regex(self.path)
             m = re.match(pattern, path, re.IGNORECASE)
             if m:
@@ -155,11 +169,26 @@ class PNTree(object):
         if len(match_names) > 1:
             raise MultiplePatternMatchError(', '.join([x[0] for x in match_names]))
         if not match_names:
-            raise NoPatternMatchError
+            raise NoPatternMatchError(path)
         if with_variables:
             return match_names[0]
         else:
             return match_names[0][0]
+
+    def filter_paths(self, root_path=None, name_in=None):
+        pass
+
+    def get_possible_paths(self, names=None, context=None):
+        names = names or self.get_path_names()
+        paths = set()
+        for name in names:
+            solved = self.get_path_instance(name).solve_possible(context)
+            if solved:
+                paths.add(solved)
+        possible_paths = [os.path.join(self.path, p) for p in paths]
+        return tuple(sorted(possible_paths))
+
+    # check
 
     def check_uniqueness_of_parsing(self, full_context):
         """
@@ -200,6 +229,71 @@ class PNTree(object):
         print('Errors:', len(result['errors']))
         return result
 
+    def check_paths_attributes(self, names=None, fix=False):
+        """
+        Recursive searching and checking all of existing paths and fix them attributes
+        """
+        if os.name == 'nt':
+            raise NotImplementedError('Working with attributes on Windows not supported yet')
+        names = names or self.get_path_names()
+        for name in names:
+            pass
+        # TODO
+
+    # attributes
+
+    def update_attributes(self, names, context, **kwargs):
+        if os.name == 'nt':
+            raise NotImplementedError('Change attributes on Windows not supported yet')
+        names = names or self.get_path_names()
+        for name in names:
+            ok = True
+            try:
+                self.update_path_chown(name, context, **kwargs)
+            except Exception as e:
+                print(name, e)
+                ok = False
+            try:
+                self.update_path_chmod(name, **kwargs)
+            except Exception as e:
+                print(name, e)
+                ok = False
+            if ok:
+                print(name, 'OK')
+
+    # def update_path_chown(self, name, context, **kwargs):
+    #     if os.name == 'nt':
+    #         raise NotImplementedError('Change owner on Windows not supported yet')
+    #     import pwd
+    #     import grp
+    #
+    #     path_ctl = self.get_path_instance(name)
+    #     groups, users = path_ctl.get_group_list(**kwargs), path_ctl.get_user_list(**kwargs)
+    #     if len(users) != len(groups):
+    #         raise ValueError('Different length of parameters: {} and {}'.format(users, groups))
+    #     for user, group, rel_path in zip(users, groups, path_ctl.iter_parts(context)):
+    #         path = os.path.normpath(os.path.join(self.path, rel_path))
+    #         if os.path.exists(path):
+    #             uid = pwd.getpwnam(user).pw_uid
+    #             gid = grp.getgrnam(group).gr_gid
+    #             os.chown(path, uid, gid)
+    #         else:
+    #             logger.warning('Path not exists: {}'.format(path))
+    #
+    # def update_path_chmod(self, name, **kwargs):
+    #     if os.name == 'nt':
+    #         raise NotImplementedError('Change mod on Windows not supported yet')
+    #     path_ctl = self.get_path_instance(name)
+    #     mod_list = path_ctl.get_chmod_list()
+    #     for mod, rel_path in zip(mod_list, path_ctl.iter_parts(kwargs)):
+    #         path = os.path.normpath(os.path.join(self.path, rel_path))
+    #         if os.path.exists(path):
+    #             os.chmod(path, mod)
+    #         else:
+    #             logger.warning('Path not exists: {}'.format(path))
+
+    # utils
+
     def transfer_to(self, other_tree, names_map=None, move=False):
         """
         Move files from one tree to other.
@@ -207,7 +301,7 @@ class PNTree(object):
 
         Parameters
         ----------
-        other_tree: PNTree
+        other_tree: NamedPathTree
             Target tree
         names_map: dict
             rename map
@@ -220,87 +314,43 @@ class PNTree(object):
         """
         raise NotImplementedError
 
-    def check_paths_attributes(self, *names, fix=False):
-        """
-        Recursive searching and checking all of existing paths and fix them attributes
-        """
-        raise NotImplementedError
+    # I/O
 
-    def makedirs(self, *names, context=None):
+    def makedirs(self, root_path=None, names=None, context=None):
         """Create dirs"""
-
-    def update_attributes(self, *names, **kwargs):
-        if os.name == 'nt':
-            raise NotImplementedError('Change attributes on Windows not supported yet')
         names = names or self.get_path_names()
-        for name in names:
-            ok = True
-            try:
-                self.update_path_chown(name, **kwargs)
-            except Exception as e:
-                print(name, e)
-                ok = False
-            try:
-                self.update_path_chmod(name, **kwargs)
-            except Exception as e:
-                print(name, e)
-                ok = False
-            if ok:
-                print(name, 'OK')
-
-    def update_path_chown(self, name, **kwargs):
-        if os.name == 'nt':
-            raise NotImplementedError('Change owner on Windows not supported yet')
-        import pwd
-        import grp
-
-        path_ctl = self.get_path_instance(name)
-        groups, users = path_ctl.get_group_list(**kwargs), path_ctl.get_user_list(**kwargs)
-        if len(users) != len(groups):
-            raise ValueError('Different length of parameters: {} and {}'.format(users, groups))
-        for user, group, rel_path in zip(users, groups, path_ctl.iter_parts(kwargs)):
-            path = os.path.normpath(os.path.join(self.path, rel_path))
-            if os.path.exists(path):
-                uid = pwd.getpwnam(user).pw_uid
-                gid = grp.getgrnam(group).gr_gid
-                os.chown(path, uid, gid)
-            else:
-                logger.warning('Path not exists: {}'.format(path))
-
-    def update_path_chmod(self, name, **kwargs):
-        if os.name == 'nt':
-            raise NotImplementedError('Change mod on Windows not supported yet')
-        path_ctl = self.get_path_instance(name)
-        mod_list = path_ctl.get_chmod_list()
-        for mod, rel_path in zip(mod_list, path_ctl.iter_parts(kwargs)):
-            path = os.path.normpath(os.path.join(self.path, rel_path))
-            if os.path.exists(path):
-                os.chmod(path, mod)
-            else:
-                logger.warning('Path not exists: {}'.format(path))
+        paths = [self.get_path_instance(name) for name in names]
+        if root_path:
+            if root_path not in self.get_path_names():
+                raise PathNameError
+            paths = [path for path in paths if root_path in path.get_all_parent_names()]
+        for path_ctl in paths:
+            path_ctl.makedirs(context, skip_context_errors=True)
 
 
-class PNPath(object):
+class NamedPath(object):
     """Class provide logic of one single named path"""
-    default_dir_chmod = 0o755
-    default_file_chmod = 0o644
+    _default_dir_permission = 0o755
+    _default_file_permission = 0o644
 
-    def __init__(self, name, options, scope, context=None, **kwargs):
+    def __init__(self, base_dir, name, options, scope, **kwargs):
         self.name = name
         self.options = options
         self._scope = scope
         self.kwargs = kwargs
-        self.context = context or {}
+        self.base_dir = base_dir
 
     def __str__(self):
         return self.path
 
     def __repr__(self):
-        return '<FSPath %s>' % self.path
+        return '<FSPath %s "%s">' % (self.name, self.path)
 
     def get_context(self, context=None):
-        ctx = copy.deepcopy(self.context)
-        ctx.update(context or {})
+        ctx = copy.deepcopy(context)
+        for k, v in self.options.get('defaults', {}).items():
+            ctx.setdefault(k, v)
+        ctx.setdefault('user', getpass.getuser())
         return ctx
 
     @property
@@ -314,20 +364,95 @@ class PNPath(object):
         """
         return self.options['path']
 
-    def solve(self, context=None):
+    @property
+    def default_dir_permission(self):
+        return self.kwargs.get('default_dir_permission') or self._default_dir_permission
+
+    @property
+    def default_file_permission(self):
+        return self.kwargs.get('default_file_permission') or self._default_dir_permission
+
+    @property
+    def default_user(self):
+        return getpass.getuser()
+
+    @property
+    def default_group(self):
+        return self.kwargs.get('default_group') or self.default_user
+
+    # solve
+
+    def solve(self, context, skip_context_errors=False, relative=False):
         """
         Resolve path from pattern with context to relative path
 
         Parameters
         ----------
         context: dict
+        skip_context_errors: bool
+        relative: bool
 
         Returns
         -------
         str
         """
-        path = self.get_full_path()
-        return self.expand_variables(path, context)
+        parent = self.get_parent()
+        if parent:
+            parent_path = parent.solve(context, skip_context_errors, relative)
+        else:
+            if relative:
+                parent_path = ''
+            else:
+                parent_path = self.base_dir
+        parts = self.get_parts(context, solve=True, dirs_only=False, skip_context_errors=skip_context_errors)
+        if parts:
+            rel_path = os.path.join(*parts)
+        else:
+            rel_path = ''
+        return os.path.join(parent_path, rel_path)
+
+    def iter_path(self, context=None, solve=True, dirs_only=True,
+                  skip_context_errors=False, full_path=False, include_parents=False):
+        """
+        Iterate path by parts
+        """
+        base = ''
+        if full_path:
+            parent = self.get_parent()
+            if parent:
+                base = parent.solve(context, skip_context_errors=skip_context_errors) if solve else parent.path
+                if include_parents:
+                    for part in parent.iter_path(context, solve=solve,
+                                                 dirs_only=dirs_only,
+                                                 full_path=full_path,
+                                                 skip_context_errors=skip_context_errors,
+                                                 include_parents=include_parents):
+                        yield part
+            else:
+                base = self.base_dir
+        p = ''
+        for part in self.get_parts(context, solve, dirs_only, skip_context_errors):
+            p = os.path.join(p, part)
+            yield os.path.join(base, p)
+
+    def get_parts(self, context=None, solve=False, dirs_only=False, skip_context_errors=False):
+        context = self.get_context(context or {})
+        context_variables = [x.upper() for x in context.keys()]
+        parts = []
+        for part in self.get_short().split(os.path.sep):
+            if dirs_only and os.path.splitext(part)[1]:
+                continue
+            if solve:
+                variables = [val.split(':')[0].upper() for val in re.findall(r"{(.*?)}", part)]
+                miss = [x for x in variables if x not in context_variables]
+                if miss:
+                    if skip_context_errors:
+                        break
+                    else:
+                        raise PathContextError(str(miss))
+                part = self.expand_variables(part, context)
+            parts.append(part)
+        return parts
 
     def expand_variables(self, text, context):
         """
@@ -343,38 +468,9 @@ class PNPath(object):
         str
         """
         ctx = self.get_context(context or {})
-        for k, v in self.options.get('defaults', {}).items():
-            ctx.setdefault(k, v)
         return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
 
-    def get_full_path(self):
-        """
-        Full path include parent patterns
-
-        Returns
-        -------
-        str
-        """
-        par = self.get_parent()
-        if par:
-            return normpath(join(
-                par.get_full_path(),
-                self.relative())
-            )
-        else:
-            return self.path
-
-    def relative(self):
-        """
-        Relative path without parent pattern
-
-        Returns
-        -------
-        str
-        """
-        return normpath(self.path.split(']', 1)[-1].lstrip('\\/'))
-
-    def variables(self):
+    def get_pattern_variables(self):
         """
         Extract variables names from pattern
 
@@ -383,9 +479,51 @@ class PNPath(object):
         list
         """
         variables = []
-        for val in re.findall(r"{(.*?)}", self.get_full_path()):
+        for val in re.findall(r"{(.*?)}", self.get_relative()):
             variables.append(val.split(':')[0])
         return variables
+
+    # paths
+
+    def get_relative(self):
+        """
+        Relative to base dir
+
+        Returns
+        -------
+        str
+        """
+        par = self.get_parent()
+        if par:
+            return normpath(join(
+                par.get_relative(),
+                self.get_short())
+            )
+        else:
+            return self.path
+
+    def get_short(self):
+        """
+        Relative to parent
+
+        Returns
+        -------
+        str
+        """
+        return normpath(self.path.split(']', 1)[-1].lstrip('\\/'))
+
+    def get_absolute(self):
+        """
+        Absolute path
+        """
+        return os.path.normpath(os.path.join(self.base_dir, self.get_relative()))
+
+    # parent
+
+    def get_parent_name(self):
+        match = re.search(r"^\[(\w+)]/?(.*)", self.path)
+        if match:
+            return match.group(1)
 
     def get_parent(self):
         """
@@ -393,16 +531,30 @@ class PNPath(object):
 
         Returns
         -------
-        PNPath
+        NamedPath
         """
-        match = re.search(r"^\[(\w+)]/?(.*)", self.path)
-        if match:
+        parent_name = self.get_parent_name()
+        if parent_name:
             try:
-                return self._scope[match.group(1)]
+                return self._scope[parent_name]
             except KeyError:
                 raise PathNameError
 
-    def as_pattern(self, prefix=None):
+    def get_all_parent_names(self):
+        names = []
+        p = self
+        while True:
+            parent_name = p.get_parent_name()
+            if not parent_name:
+                break
+            names.append(parent_name)
+            p = p.get_parent()
+        names.reverse()
+        return names
+
+    # patterns
+
+    def as_glob(self, prefix=None):
         """
         Convert pattern to glob-pattern
 
@@ -415,7 +567,7 @@ class PNPath(object):
         -------
         str
         """
-        path = self.get_full_path()
+        path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
         return re.sub(r"{.*?}", '*', path)
@@ -439,7 +591,7 @@ class PNPath(object):
         simple_pattern = r'[^\/\\]+'
         # named_pattern = r'(?P<%s>[\w\d\s:|"\'-]+)'
         named_pattern = r'(?P<%s>[^\/\\]+)'
-        path = self.get_full_path()
+        path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
 
@@ -459,38 +611,97 @@ class PNPath(object):
         pattern = '^%s$' % pattern
         return pattern
 
-    def get_parts(self):
-        return self.relative().split(os.path.sep)
-
-    def iter_parts(self, context=None):
-        path = os.path.normpath(self.expand_variables(self.relative(), self.get_context(context)))
-        par = self.get_parent()
-        par_path = par.solve(self.get_context(context)) if par else ''
-        tail = ''
-        for part in path.split(os.path.sep):
-            tail = os.path.join(tail, part)
-            yield os.path.join(par_path, tail)
-
-    def get_chmod_list(self):
+    def get_permission_list(self, **kwargs):
         """chmod parameter"""
-        mode_list = self._get_list(self.options.get('chmod'))
+        mode_list = self._get_list(self.options.get('perm'))
         mode_list = [self._valid_mode(x) for x in mode_list]
+        for i in range(len(mode_list)):
+            if not mode_list[i]:
+                mode_list[i] = kwargs.get('default_permission') or self.default_dir_permission
         return mode_list
 
     def get_group_list(self, default_group=None, **kwargs):
-        return self.get_list_by_value_name('groups', 'default_group', default_group, **kwargs)
+        return self._get_option_list_by_value_name('groups', 'default_group', default_group, **kwargs)
 
     def get_user_list(self, default_user=None, **kwargs):
-        return self.get_list_by_value_name('users', 'default_user', default_user, **kwargs)
+        return self._get_option_list_by_value_name('users', 'default_user', default_user, **kwargs)
 
-    def get_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs):
+    # I/O
+
+    def makedirs(self, context, skip_context_errors=True, **kwargs):
+        parent = self.get_parent()
+        if parent:
+            parent.makedirs(context, skip_context_errors)
+        for path, perm, group, user in zip(
+                self.iter_path(context, solve=True, dirs_only=True,
+                               skip_context_errors=skip_context_errors, full_path=True),
+                self.get_permission_list(),
+                self.get_group_list(),
+                self.get_user_list()):
+            if not os.path.exists(path):
+                # permission
+                perm = kwargs.get('default_permission') or perm
+                if not perm:
+                    perm = self.default_dir_permission
+                # user
+                user = user or kwargs.get('default_user') or self.default_user
+                # group
+                group = group or kwargs.get('default_group') or self.default_group
+                os.makedirs(path)
+                chmod(path, perm)
+                chown(path, user, group)
+
+    def remove_empty_dirs(self, context):
+        pass
+
+    # attributes
+
+    def update_attributes(self, context, **kwargs):
+        self.update_permissions(context, **kwargs)
+        self.update_owner(context, **kwargs)
+
+    def update_permissions(self, context, skip_context_errors=False, parents=False,
+                           skip_non_exists=False, **kwargs):
+        if parents:
+            parent = self.get_parent()
+            if parent:
+                parent.update_permissions(context, skip_context_errors, parents, skip_non_exists, **kwargs)
+
+        for path, perm in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
+                              self.get_permission_list(**kwargs)):
+            if skip_non_exists and not os.path.exists(path):
+                continue
+            perm = perm or kwargs.get('default_permission') or (
+                self.default_dir_permission if not os.path.splitext(path)[1] else self.default_file_permission)
+            chmod(path, perm)
+
+    def update_owner(self, context, skip_context_errors=False,
+                     parents=False, skip_non_exists=False, **kwargs):
+        if parents:
+            parent = self.get_parent()
+            if parent:
+                parent.update_owner(context, skip_context_errors, parents, skip_non_exists)
+
+        for path, user, group in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
+                                     self.get_user_list(**kwargs),
+                                     self.get_group_list(**kwargs)):
+            # user
+            user = user or kwargs.get('default_user') or self.default_user
+            # group
+            group = group or kwargs.get('default_group') or self.default_group
+            os.makedirs(path)
+            chown(path, user, group)
+
+    # utils
+
+    def _get_option_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs):
         default_value = default_value or (self.kwargs.get(default_value_key) if default_value_key else None)
         list_length = len(self.get_parts())
         value_list = self._get_list(self.options.get(value))
         value_list = [x if x is not None else default_value for x in value_list]
         if len(value_list) < list_length:
             value_list.extend([default_value]*(list_length-list_length))
-        return [self.expand_variables(x, kwargs) for x in value_list]
+        return [self.expand_variables(x, kwargs) if x else x for x in value_list]
 
     def _get_list(self, values, default=None):
         list_length = len(self.get_parts())
@@ -506,14 +717,33 @@ class PNPath(object):
             return oct(value)
         if isinstance(value, bytes):
             value = value.decode()
-        if isinstance(value, str):
+        if isinstance(value, string_types):
             if value.isdigit():
                 # '0755'
                 return oct(int('0o%s' % value, 8))
             elif re.match(r"^\do\d+$", value):
                 # '0o755'
                 return oct(int(value, 8))
-        raise ValueError('Wrong mode: {}'.format(value))
+        raise ValueError('Wrong mode: {} ({})'.format(value, type(value)))
+
+
+def chown(path, user, group):
+    import pwd, grp
+    uid = pwd.getpwnam(user).pw_uid
+    gid = grp.getgrnam(group).gr_gid
+    try:
+        os.chown(path, uid, gid)
+    except Exception as e:
+        raise type(e)("%s %s:%s (%s:%s)" % (e, user, group, uid, gid))
+
+
+def chmod(path, mode):
+    if isinstance(mode, basestring):
+        mode = int(mode, 8)
+    try:
+        os.chmod(path, mode)
+    except Exception as e:
+        raise type(e)("%s %s" % (e, mode))
 
 
 class CustomFormatString(str):
@@ -563,7 +793,7 @@ class CustomException(Exception):
         if args:
             super(CustomException, self).__init__(*args)
         else:
-            super(CustomException, self).__init__(self.msg)
+            super(CustomException, self).__init__("{} {}".format(self.msg, args[0]).strip())
 
 
 class PathNameError(CustomException):
@@ -577,3 +807,6 @@ class MultiplePatternMatchError(CustomException):
 class NoPatternMatchError(CustomException):
     msg = 'No patterns names match'
 
+
+class PathContextError(CustomException):
+    msg = 'Wrong context for pattern'
