@@ -1,16 +1,14 @@
-from namedpath import PNTree
+from namedpath import NamedPathTree
 
 path_list = dict(
-    MNT_SHOTS='{MNT_SHOTS}',
-    PROJECT='{PROJECT_NAME}',
-    CONFIG={
-        'path': '[PROJECT]/.config',
-        'groups': []
+    PROJECT='{PROJECT_NAME}',       # simple pattern
+    CONFIG={                        # detailed pattern
+        'path': '[PROJECT]/.config'
     },
     # SHOTS #########################################
     SHOTS={
         'path': '[PROJECT]/shots',
-        'symlink_to': '[MNT_SHOTS]'
+        'symlink_to': '{MNT_SHOTS}'
     },
     SEQUENCE='[SHOTS]/{SEQUENCE}',
     SHOT='[SEQUENCE]/{ENTITY_NAME}',
@@ -24,13 +22,13 @@ path_list = dict(
     SHOT_RENDER='[SHOT]/render',
     SHOT_TEMP={
         'path': '[SHOT]/temp',
-        'dirs_chmod': 0o777
+        'perm': 0o777
     },
     SHOT_RENDER_PUBLISH={
         'path': '[SHOT_RENDER]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}_{FRAME:05d}.{EXT}',
         'defaults': {'EXT': 'exr'},
 
-        'chmod': [
+        'perm': [
             0o755,   # access mode for "publish" dir
             None,    # from default
             '0o644'    # access mode for publish file
@@ -73,7 +71,7 @@ path_list = dict(
     ASSET_REFS='[ASSET]/ref',
     ASSET_TEMP={
         'path': '[ASSET]/temp',
-        'chmod': 0o777
+        'perm': 0o777
     }
 )
 
@@ -87,8 +85,7 @@ context = dict(
     frame=225
 )
 
-tree = PNTree(root_path='d:/projects', path_list=path_list, context=context, default_group='paul')
-
+tree = NamedPathTree(root_path='d:/projects', path_list=path_list, default_group='paul')
 tree.check_uniqueness_of_parsing(context)
 # {'errors': {}, 'success': ['SHOT_FX', 'SHOT_COMP', 'ASSET_TEXTURES'...
 tree.get_path_names()
@@ -98,10 +95,6 @@ path = tree.get_path('SHOT', context)
 tree.parse(path)
 # 'SHOT'
 path2 = tree.get_path('SHOT_RENDER_PUBLISH')
-
-
-
-
 tree.parse(path2)
 # 'SHOT_RENDER_PUBLISH'
 tree.parse(path2, with_variables=True)
