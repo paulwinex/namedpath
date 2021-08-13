@@ -19,7 +19,7 @@ def patterns():
         },
         ASSETS='[PROJECT]/assets',
         ASSET='[ASSETS]/{ENTITY_NAME}',
-        ASSSET_MODELS='[ASSET]/models'
+        ASSET_MODELS='[ASSET]/models'
     )
 
 
@@ -45,7 +45,7 @@ def path_ctl1(tree):
 
 @pytest.fixture()
 def path_ctl2(tree):
-    return tree.get_path_instance('ASSSET_MODELS')
+    return tree.get_path_instance('ASSET_MODELS')
 
 
 def test_unique_patterns(tree, context):
@@ -67,6 +67,12 @@ def test_parsing(tree, context):
     path1 = tree.get_path('SHOT', context)
     name = tree.parse(path1)
     assert name == 'SHOT'
+
+
+def test_tree_props(tree):
+    assert tree.path == '/tmp/my_struct'
+    assert tree.get_path_names() == ('ASSET', 'ASSETS', 'ASSET_MODELS', 'PROJECT', 'SHOT', 'SHOTS', 'SHOT_PUBLISH')
+    assert tree.get_path_instance('ASSET').name == 'ASSET'
 
 
 def test_path_instance_parent_object(path_ctl1, tree, context):
@@ -124,3 +130,13 @@ def test_path_values(path_ctl1, path_ctl2):
     assert path_ctl2.get_absolute() == '/tmp/my_struct/{PROJECT_NAME}/assets/{ENTITY_NAME}/models'
     assert path_ctl2.get_relative() == '{PROJECT_NAME}/assets/{ENTITY_NAME}/models'
     assert path_ctl2.get_short() == 'models'
+
+
+# I/O TESTS (need root permissions)
+
+def _test_makedirs_tree(tree):
+    tree.makedirs()
+
+
+def _test_makedirs_path(path_ctl1):
+    path_ctl1.makedirs()
