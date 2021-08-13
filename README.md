@@ -41,7 +41,7 @@ print tree.get_path('RENDER_PUBLISH', context)
 
 - Any  pattern can be inherited from other pattern
 
-- Each structure can have different pattern set, but it will work with same code.
+- Each structure can have a different pattern set, but it will work with the same code
 
 - Support generic string formatting and string methods call
 
