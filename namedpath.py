@@ -175,8 +175,8 @@ class NamedPathTree(object):
         else:
             return match_names[0][0]
 
-    def filter_paths(self, root_path=None, name_in=None):
-        pass
+    def filter_paths(self, root_path=None, name_in=None, parent_in=None):
+        raise NotImplementedError
 
     # check
 
@@ -204,19 +204,19 @@ class NamedPathTree(object):
             try:
                 parsed_name = self.parse(path)
             except NoPatternMatchError as e:
-                print(str(e))
+                logger.warning(str(e))
                 result['errors'][name] = 'Error: '+str(e)
             except MultiplePatternMatchError as e:
-                print(str(e))
+                logger.warning(str(e))
                 result['errors'][name] = 'Error: '+str(e)
             else:
                 if parsed_name != name:
                     result['errors'][name] = 'Generated and parsed names not match: {} -> {}'.format(name, parsed_name)
                 else:
                     result['success'].append(name)
-        print('Total patterns:', len(self._scope))
-        print('Success parsing:', len(result['success']))
-        print('Errors:', len(result['errors']))
+        logger.info('Total patterns: %s' % len(self._scope))
+        logger.info('Success parsing: %s' % len(result['success']))
+        logger.info('Errors: %s' % len(result['errors']))
         return result
 
     def check_paths_attributes(self, names=None, fix=False):
@@ -260,7 +260,7 @@ class NamedPathTree(object):
 
     # I/O
 
-    def makedirs(self, root_path=None, names=None, context=None):
+    def makedirs(self, context=None, names=None, root_path=None, **kwargs):
         """Create dirs"""
         names = names or self.get_path_names()
         paths = [self.get_path_instance(name) for name in names]
@@ -269,7 +269,16 @@ class NamedPathTree(object):
                 raise PathNameError
             paths = [path for path in paths if root_path in path.get_all_parent_names()]
         for path_ctl in paths:
-            path_ctl.makedirs(context, skip_context_errors=True)
+            path_ctl.makedirs(context, skip_context_errors=kwargs.get('skip_context_errors', True))
+
+    def clear_empty_dirs(self, context=None, names=None):
+        raise NotImplementedError
+
+    def show(self, context):
+        # TODO: implement tree view
+        for p in self._scope.values():
+            path = p.solve(context, skip_context_errors=True)
+            print(path)
 
 
 class NamedPath(object):
@@ -596,7 +605,7 @@ class NamedPath(object):
                 chown(path, user, group)
 
     def remove_empty_dirs(self, context):
-        pass
+        raise NotImplementedError
 
     # attributes
 
@@ -672,6 +681,9 @@ class NamedPath(object):
 
 
 def chown(path, user, group):
+    if os.name == 'nt':
+        raise OSError('Not implemented for Windows OS')
+    # TODO: implement for windows
     import pwd, grp
     uid = pwd.getpwnam(user).pw_uid
     gid = grp.getgrnam(group).gr_gid
@@ -682,6 +694,9 @@ def chown(path, user, group):
 
 
 def chmod(path, mode):
+    if os.name == 'nt':
+        raise OSError('Not implemented for Windows OS')
+    # TODO: implement for windows
     if isinstance(mode, basestring):
         mode = int(mode, 8)
     try:
