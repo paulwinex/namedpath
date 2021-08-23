@@ -335,7 +335,7 @@ class NamedPath(object):
 
     # solve
 
-    def solve(self, context, skip_context_errors=False, relative=False):
+    def solve(self, context, skip_context_errors=False, relative=False, local=False):
         """
         Resolve path from pattern with context to relative path
 
@@ -344,19 +344,23 @@ class NamedPath(object):
         context: dict
         skip_context_errors: bool
         relative: bool
+        local: bool
 
         Returns
         -------
         str
         """
-        parent = self.get_parent()
-        if parent:
-            parent_path = parent.solve(context, skip_context_errors, relative)
+        if local:
+            parent_path = ''
         else:
-            if relative:
-                parent_path = ''
+            parent = self.get_parent()
+            if parent:
+                parent_path = parent.solve(context, skip_context_errors, relative)
             else:
-                parent_path = self.base_dir
+                if relative:
+                    parent_path = ''
+                else:
+                    parent_path = self.base_dir
         parts = self.get_parts(context, solve=True, dirs_only=False, skip_context_errors=skip_context_errors)
         if parts:
             rel_path = os.path.join(*parts)
