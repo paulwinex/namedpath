@@ -1,8 +1,8 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
-import os.path
-import glob
 from os.path import join, normpath, exists, abspath, expanduser, expandvars
+import os
+import json
 import copy
 import logging
 import getpass
@@ -44,6 +44,29 @@ class NamedPathTree(object):
 
     def __repr__(self):
         return '<NamedPathTree "{}">'.format(self.path)
+
+    @classmethod
+    def load_from_files(cls, root, files):
+        patterns = {}
+        for f in files:
+            patterns.update(cls._load_commented_json(f))
+        return cls(root, patterns)
+
+    @staticmethod
+    def _load_commented_json(path, **kwargs):
+        text = open(path).read()
+        regex = r'\s*(/{2}).*$'
+        regex_inline = r'(:?(?:\s)*([A-Za-z\d.{}]*)|((?<=\").*\"),?)(?:\s)*(((/{2}).*)|)$'
+        lines = text.split('\n')
+        for index, line in enumerate(lines):
+            if re.search(regex, line):
+                if re.search(r'^' + regex, line, re.IGNORECASE):
+                    lines[index] = ""
+                elif re.search(regex_inline, line):
+                    lines[index] = re.sub(regex_inline, r'\1', line)
+        multiline = re.compile(r"/\*.*?\*/", re.DOTALL)
+        cleaned_text = re.sub(multiline, "", '\n'.join(lines))
+        return json.loads(cleaned_text, **kwargs)
 
     # props
 
@@ -147,6 +170,10 @@ class NamedPathTree(object):
         """
         return tuple(sorted(self._scope.keys()))
 
+    def iter_patterns(self):
+        for name in self.get_path_names():
+            yield self.get_path_instance(name)
+
     def parse(self, path, with_variables=False):
         """
         Reverse existing path to a pattern name
@@ -174,6 +201,17 @@ class NamedPathTree(object):
             return match_names[0]
         else:
             return match_names[0][0]
+
+    def get_pattern_variables(self, name):
+        return self.get_path_instance(name).get_pattern_variables()
+
+    def get_all_required_variables(self):
+        variables = set()
+        for pat in self.iter_patterns():
+            variables.update(pat.get_pattern_variables())
+        return list(variables)
+
+
 
     def filter_paths(self, root_path=None, name_in=None, parent_in=None):
         raise NotImplementedError
@@ -438,7 +476,7 @@ class NamedPath(object):
         variables = []
         for val in re.findall(r"{(.*?)}", self.get_relative()):
             variables.append(val.split(':')[0])
-        return variables
+        return sorted(list(set(variables)))
 
     # paths
 
@@ -544,16 +582,13 @@ class NamedPath(object):
         -------
         str
         """
-        # simple_pattern = r'[\w\d\s:|"\'-]+'
-        simple_pattern = r'[^\/\\]+'
-        # named_pattern = r'(?P<%s>[\w\d\s:|"\'-]+)'
-        named_pattern = r'(?P<%s>[^\/\\]+)'
+        simple_pattern = r'[^/\\]+'
+        named_pattern = r'(?P<%s>[^/\\]+)'
         path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
 
         names = []
-
         def get_subpattern(match):
             v = match.group(0)
             name = v.strip('{}').split(':')[0].split('|')[0].lower()
@@ -565,6 +600,7 @@ class NamedPath(object):
             else:
                 return simple_pattern
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
+        pattern = pattern.replace('.', '\\.')
         pattern = '^%s$' % pattern
         return pattern
 
