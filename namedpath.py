@@ -38,6 +38,7 @@ class NamedPathTree(object):
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self._init_scope(path_list)
+        self.default_context = kwargs.get('default_context', {})
 
     def __str__(self):
         return self.path
@@ -114,6 +115,9 @@ class NamedPathTree(object):
         if create and not exists(path):
             ctl.makedirs(context, skip_context_errors=skip_context_errors)
         return path
+
+    def get_path_variables(self, name):
+        return self.get_path_instance(name).get_pattern_variables()
 
     def get_raw_path(self, name):
         """
@@ -330,6 +334,7 @@ class NamedPath(object):
         self._scope = scope
         self.kwargs = kwargs
         self.base_dir = base_dir
+        self.default_context = kwargs.get('default_context', {})
 
     def __str__(self):
         return self.path
@@ -338,7 +343,8 @@ class NamedPath(object):
         return '<FSPath %s "%s">' % (self.name, self.path)
 
     def get_context(self, context=None):
-        ctx = copy.deepcopy(context)
+        ctx = copy.deepcopy(self.default_context)
+        ctx.update(context)
         for k, v in self.options.get('defaults', {}).items():
             ctx.setdefault(k, v)
         ctx.setdefault('user', getpass.getuser())
