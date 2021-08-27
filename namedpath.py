@@ -589,12 +589,13 @@ class NamedPath(object):
         parent = self.get_parent()
         if parent:
             parent.makedirs(context, skip_context_errors)
-        for path, perm, group, user in zip(
+        parts = list(zip(
                 self.iter_path(context, solve=True, dirs_only=True,
                                skip_context_errors=skip_context_errors, full_path=True),
                 self.get_permission_list(),
                 self.get_group_list(),
-                self.get_user_list()):
+                self.get_user_list()))
+        for i, (path, perm, group, user) in enumerate(parts):
             if not os.path.exists(path):
                 # permission
                 perm = kwargs.get('default_permission') or perm
@@ -607,6 +608,11 @@ class NamedPath(object):
                 os.makedirs(path)
                 chmod(path, perm)
                 chown(path, user, group)
+        # target_link = self.options.get('symlink_to')
+        # if target_link:do
+        #     target_path = self.expand_variables(target_link, context)
+        #     logger.debug('Symlink to %s', target_path)
+        #     os.symlink(target_path, self.solve(context, skip_context_errors=False))
 
     def remove_empty_dirs(self, context):
         raise NotImplementedError
