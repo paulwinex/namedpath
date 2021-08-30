@@ -85,6 +85,8 @@ class NamedPathTree(object):
     def _init_scope(self, path_list):
         """Init all paths instances"""
         for path_name, options in path_list.items():
+            if not path_name:
+                continue
             if isinstance(options, str):
                 options = dict(path=options)
             path_name = path_name.upper()
@@ -216,7 +218,6 @@ class NamedPathTree(object):
         return list(variables)
 
 
-
     def filter_paths(self, root_path=None, name_in=None, parent_in=None):
         raise NotImplementedError
 
@@ -316,11 +317,29 @@ class NamedPathTree(object):
     def clear_empty_dirs(self, context=None, names=None):
         raise NotImplementedError
 
-    def show(self, context):
-        # TODO: implement tree view
-        for p in self._scope.values():
-            path = p.solve(context, skip_context_errors=True)
-            print(path)
+    def show_tree(self, **kwargs):
+        def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
+            for elem in elements:
+                print(''.join(
+                    [
+                        placeholder*indent*2 if (not print_path and print_name) else '',
+                        ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
+                        placeholder*indent*2 if print_path else '',
+                        elem['inst'].get_short() if print_path else '']))
+                if elem['ch']:
+                    _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
+                          indent=indent+1, placeholder=placeholder)
+        tr = {x.name: {'inst': x, 'ch': []} for x in self.iter_patterns() if x.name}
+        tr[''] = {'inst': None, 'ch': []}
+        for name, item in tr.items():
+            if not item['inst']:
+                continue
+            par = item['inst'].get_parent()
+            if par:
+                tr[par.name]['ch'].append(item)
+            else:
+                tr['']['ch'].append(item)
+        _show(tr['']['ch'], max_name_width=max([len(x) for x in tr.keys()]), **kwargs)
 
 
 class NamedPath(object):
