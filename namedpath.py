@@ -84,13 +84,19 @@ class NamedPathTree(object):
 
     def _init_scope(self, path_list):
         """Init all paths instances"""
+        to_remove = []
         for path_name, options in path_list.items():
             if not path_name:
+                continue
+            if path_name.startswith('-'):
+                to_remove.append(path_name)
                 continue
             if isinstance(options, string_types):
                 options = dict(path=options)
             path_name = path_name.upper()
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
+        for name in to_remove:
+            self._scope.pop(name, None)
 
     # get path
 
