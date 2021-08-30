@@ -580,7 +580,7 @@ class NamedPath(object):
 
     # patterns
 
-    def as_glob(self, prefix=None):
+    def as_glob(self, prefix=None, context=None):
         """
         Convert pattern to glob-pattern
 
@@ -588,6 +588,7 @@ class NamedPath(object):
         ----------
         prefix: str
             Root path
+        context: dict
 
         Returns
         -------
@@ -596,7 +597,18 @@ class NamedPath(object):
         path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
-        return re.sub(r"{.*?}", '*', path)
+
+        def get_context_val(match):
+            val = match.group(0)
+            if context:
+                print(val)
+                try:
+                    return self.expand_variables(val, context)
+                except KeyError:
+                    pass
+            return '*'
+
+        return re.sub(r"{.*?}", get_context_val, path)
 
     def as_regex(self, prefix=None, named_values=True):
         """
