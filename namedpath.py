@@ -325,7 +325,7 @@ class NamedPathTree(object):
 
     def show_tree(self, **kwargs):
         def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
-            for elem in elements:
+            for elem in sorted(elements, key=lambda x: x['inst'].name):
                 print(''.join(
                     [
                         placeholder*indent*2 if (not print_path and print_name) else '',
