@@ -186,33 +186,35 @@ class NamedPathTree(object):
         for name in self.get_path_names():
             yield self.get_path_instance(name)
 
-    def parse(self, path, with_variables=False):
+    def parse(self, path, with_context=False):
         """
         Reverse existing path to a pattern name
 
         Parameters
         ----------
         path: str
-        with_variables: bool
+        with_context: bool
 
         Returns
         -------
         str or list
         """
         match_names = []
-        for name, p in self._scope.items():  # type: NamedPath
-            pattern = p.as_regex(self.path)
+        for name, path_instance in self._scope.items():  # type: NamedPath
+            pattern = path_instance.as_regex(self.path)
             m = re.match(pattern, path, re.IGNORECASE)
             if m:
-                match_names.append((name, m.groupdict()))
+                match_names.append((name, m.groupdict(), path_instance))
         if len(match_names) > 1:
             raise MultiplePatternMatchError(', '.join([x[0] for x in match_names]))
         if not match_names:
             raise NoPatternMatchError(path)
-        if with_variables:
-            return match_names[0]
+        name, context, instance = match_names[0]
+        if with_context:
+            context = instance.convert_types(context)
+            return name, context
         else:
-            return match_names[0][0]
+            return name
 
     def get_pattern_variables(self, name):
         return self.get_path_instance(name).get_pattern_variables()
@@ -222,7 +224,6 @@ class NamedPathTree(object):
         for pat in self.iter_patterns():
             variables.update(pat.get_pattern_variables())
         return list(variables)
-
 
     def filter_paths(self, root_path=None, name_in=None, parent_in=None):
         raise NotImplementedError
@@ -496,6 +497,19 @@ class NamedPath(object):
         ctx = self.get_context(context or {})
         return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
 
+    def convert_types(self, context):
+        """
+        Convert context types after parsing
+        """
+        types = self.options.get('types')
+        if not types:
+            return context
+        for name, tp in types.items():
+            if name.lower() in context:
+                expr = '{}({})'.format(tp, repr(context[name.lower()]))
+                context[name.lower()] = eval(expr)
+        return context
+
     def get_pattern_variables(self):
         """
         Extract variables names from pattern
@@ -635,18 +649,21 @@ class NamedPath(object):
         def get_subpattern(match):
             v = match.group(0)
             name = v.strip('{}').split(':')[0].split('|')[0].lower()
-            names.add(name)
             if context:
                 try:
-                    return self.expand_variables(v, context)
+                    expanded = self.expand_variables(v, context)
+                    names.add(name)
+                    return expanded
                 except KeyError:
                     pass
             if name in names:
                 return simple_pattern
+            names.add(name)
             if named_values:
                 return named_pattern % name
             else:
                 return simple_pattern
+
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
         pattern = pattern.replace('.', '\\.')
         pattern = '^%s$' % pattern
