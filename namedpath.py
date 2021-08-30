@@ -87,7 +87,7 @@ class NamedPathTree(object):
         for path_name, options in path_list.items():
             if not path_name:
                 continue
-            if isinstance(options, str):
+            if isinstance(options, string_types):
                 options = dict(path=options)
             path_name = path_name.upper()
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
@@ -656,8 +656,11 @@ class NamedPath(object):
                 self.get_permission_list(),
                 self.get_group_list(),
                 self.get_user_list()))
+        parts_count = len(parts)
         for i, (path, perm, group, user) in enumerate(parts):
+            # итерация по частям пути от начала к концу
             if not os.path.exists(path):
+                # если путь еще не существует, то создаём его
                 # permission
                 perm = kwargs.get('default_permission') or perm
                 if not perm:
@@ -666,14 +669,27 @@ class NamedPath(object):
                 user = user or kwargs.get('default_user') or self.default_user
                 # group
                 group = group or kwargs.get('default_group') or self.default_group
-                os.makedirs(path)
-                chmod(path, perm)
-                chown(path, user, group)
-        # target_link = self.options.get('symlink_to')
-        # if target_link:do
-        #     target_path = self.expand_variables(target_link, context)
-        #     logger.debug('Symlink to %s', target_path)
-        #     os.symlink(target_path, self.solve(context, skip_context_errors=False))
+                if i == parts_count-1 and self.options.get('symlink_to'):
+                    # если это последняя часть пути и есть опция линковки, то делаем линк
+                    link_source = self.expand_variables(self.options.get('symlink_to'), context)
+                    if not os.path.exists(link_source):
+                        raise IOError('Source path for link not exists: {}'.format(link_source))
+                    os.symlink(link_source, path)
+                else:
+                    os.makedirs(path)
+                    chmod(path, perm)
+                    chown(path, user, group)
+                logger.info(path)
+            elif i == parts_count-1 and self.options.get('symlink_to'):
+                # если путь уже существует
+                if not os.path.islink(path):
+                    # и это не линк, то выбрасываем ошибку
+                    raise IOError('Path for symlink already exists and it is not a symlink: {}'.format(path))
+                link_source = self.expand_variables(self.options.get('symlink_to'), context)
+                real_path = os.readlink(path)
+                if real_path != link_source:
+                    raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
+                        path, real_path, link_source))
 
     def remove_empty_dirs(self, context):
         raise NotImplementedError
