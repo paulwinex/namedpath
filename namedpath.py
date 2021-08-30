@@ -601,7 +601,6 @@ class NamedPath(object):
         def get_context_val(match):
             val = match.group(0)
             if context:
-                print(val)
                 try:
                     return self.expand_variables(val, context)
                 except KeyError:
@@ -610,7 +609,7 @@ class NamedPath(object):
 
         return re.sub(r"{.*?}", get_context_val, path)
 
-    def as_regex(self, prefix=None, named_values=True):
+    def as_regex(self, prefix=None, named_values=True, context=None):
         """
         Convert pattern to regex
 
@@ -620,6 +619,7 @@ class NamedPath(object):
             Root path
         named_values: bool
             Make named groups in regex
+        context: dict
 
         Returns
         -------
@@ -630,14 +630,19 @@ class NamedPath(object):
         path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
+        names = set()
 
-        names = []
         def get_subpattern(match):
             v = match.group(0)
             name = v.strip('{}').split(':')[0].split('|')[0].lower()
+            names.add(name)
+            if context:
+                try:
+                    return self.expand_variables(v, context)
+                except KeyError:
+                    pass
             if name in names:
                 return simple_pattern
-            names.append(name)
             if named_values:
                 return named_pattern % name
             else:
