@@ -17,6 +17,7 @@ else:
 
 def __setup_simple_logger(lg):      # type: (logging.Logger) -> logging.Logger
     lg.addHandler(logging.StreamHandler())
+    lg.propagate = False
     return lg
 
 
@@ -310,14 +311,14 @@ class NamedPathTree(object):
 
     # I/O
 
-    def makedirs(self, context=None, names=None, root_path=None, **kwargs):
+    def makedirs(self, context=None, names=None, root_path_name=None, **kwargs):
         """Create dirs"""
         names = names or self.get_path_names()
         paths = [self.get_path_instance(name) for name in names]
-        if root_path:
-            if root_path not in self.get_path_names():
+        if root_path_name:
+            if root_path_name not in self.get_path_names():
                 raise PathNameError
-            paths = [path for path in paths if root_path in path.get_all_parent_names()]
+            paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
         for path_ctl in paths:
             path_ctl.makedirs(context, skip_context_errors=kwargs.get('skip_context_errors', True))
 
@@ -449,12 +450,16 @@ class NamedPath(object):
             if parent:
                 base = parent.solve(context, skip_context_errors=skip_context_errors) if solve else parent.path
                 if include_parents:
-                    for part in parent.iter_path(context, solve=solve,
-                                                 dirs_only=dirs_only,
-                                                 full_path=full_path,
-                                                 skip_context_errors=skip_context_errors,
-                                                 include_parents=include_parents):
-                        yield part
+                    try:
+                        for part in parent.iter_path(context, solve=solve,
+                                                     dirs_only=dirs_only,
+                                                     full_path=full_path,
+                                                     skip_context_errors=False,
+                                                     include_parents=include_parents):
+                            yield part
+                    except PathContextError:
+                        print('EXIT PARENT')
+                        return
             else:
                 base = self.base_dir
         p = ''
@@ -686,10 +691,15 @@ class NamedPath(object):
 
     # I/O
 
-    def makedirs(self, context, skip_context_errors=True, **kwargs):
+    def makedirs(self, context, skip_context_errors=False, **kwargs):
         parent = self.get_parent()
         if parent:
-            parent.makedirs(context, skip_context_errors)
+            try:
+                if not parent.makedirs(context, skip_context_errors=False, **kwargs):
+                    return False
+            except PathContextError:
+                if skip_context_errors:
+                    return False
         parts = list(zip(
                 self.iter_path(context, solve=True, dirs_only=True,
                                skip_context_errors=skip_context_errors, full_path=True),
@@ -719,7 +729,7 @@ class NamedPath(object):
                     os.makedirs(path)
                     chmod(path, perm)
                     chown(path, user, group)
-                logger.info(path)
+                logger.info('Make {}: {}'.format(self.name, path))
             elif i == parts_count-1 and self.options.get('symlink_to'):
                 # если путь уже существует
                 if not os.path.islink(path):
@@ -730,6 +740,7 @@ class NamedPath(object):
                 if real_path != link_source:
                     raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
                         path, real_path, link_source))
+        return True
 
     def remove_empty_dirs(self, context):
         raise NotImplementedError
@@ -865,7 +876,7 @@ class CustomFormatString(str):
                     if not m:
                         continue
                     expression_to_eval = 'val.%s' % m
-                    print(expression_to_eval)
+                    # print(expression_to_eval)
                     val = eval(expression_to_eval)
                 context[var] = val
                 self = _self
