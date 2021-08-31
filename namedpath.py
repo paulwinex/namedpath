@@ -311,7 +311,7 @@ class NamedPathTree(object):
 
     # I/O
 
-    def makedirs(self, context=None, names=None, root_path_name=None, **kwargs):
+    def makedirs(self, context=None, names=None, root_path_name=None, skip_context_errors=True, **kwargs):
         """Create dirs"""
         names = names or self.get_path_names()
         paths = [self.get_path_instance(name) for name in names]
@@ -320,7 +320,7 @@ class NamedPathTree(object):
                 raise PathNameError
             paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
         for path_ctl in paths:
-            path_ctl.makedirs(context, skip_context_errors=kwargs.get('skip_context_errors', True))
+            path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
 
     def clear_empty_dirs(self, context=None, names=None):
         raise NotImplementedError
