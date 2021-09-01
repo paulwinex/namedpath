@@ -34,12 +34,15 @@ class NamedPathTree(object):
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path, path_list, **kwargs):
+    def __init__(self, root_path, path_list=None, default_context=None, **kwargs):
         self.kwargs = kwargs
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
-        self._init_scope(path_list)
-        self.default_context = kwargs.get('default_context', {})
+        self.default_context = {}
+        if path_list:
+            self.update_patterns(path_list)
+        if default_context:
+            self.update_default_context(default_context)
 
     def __str__(self):
         return self.path
@@ -83,13 +86,13 @@ class NamedPathTree(object):
         """
         return self._root_path
 
-    def _init_scope(self, path_list):
+    def update_patterns(self, path_list):
         """Init all paths instances"""
         to_remove = []
         for path_name, options in path_list.items():
             if not path_name:
                 continue
-            if path_name.startswith('-'):
+            if path_name.startswith('-') or options is None:
                 to_remove.append(path_name)
                 continue
             if isinstance(options, string_types):
@@ -98,6 +101,9 @@ class NamedPathTree(object):
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
+
+    def update_default_context(self, context):
+        self.default_context.update(context)
 
     # get path
 
@@ -228,6 +234,9 @@ class NamedPathTree(object):
 
     def filter_paths(self, root_path=None, name_in=None, parent_in=None):
         raise NotImplementedError
+
+    def is_empty(self):
+        return len(self._scope) > 0
 
     # check
 
