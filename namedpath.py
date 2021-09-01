@@ -92,12 +92,19 @@ class NamedPathTree(object):
         for path_name, options in path_list.items():
             if not path_name:
                 continue
-            if path_name.startswith('-') or options is None:
+            if options is None:
                 to_remove.append(path_name)
                 continue
             if isinstance(options, string_types):
                 options = dict(path=options)
             path_name = path_name.upper()
+            if path_name.endswith('+'):
+                path_name = path_name.strip('+')
+                if path_name in self._scope:
+                    self._scope[path_name].options.update(options)
+                    continue
+            if 'path' not in options:
+                raise ValueError('No "path" parameter in pattern options')
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
