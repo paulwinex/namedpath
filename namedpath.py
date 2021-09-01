@@ -86,6 +86,12 @@ class NamedPathTree(object):
         """
         return self._root_path
 
+    def get_patterns(self):
+        return {name: path.options for name, path in self._scope.items()}
+
+    def get_context(self):
+        return self.default_context
+
     def update_patterns(self, path_list):
         """Init all paths instances"""
         to_remove = []
