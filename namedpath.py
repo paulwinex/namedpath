@@ -39,10 +39,10 @@ class NamedPathTree(object):
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self.default_context = {}
-        if path_list:
-            self.update_patterns(path_list)
         if default_context:
             self.update_default_context(default_context)
+        if path_list:
+            self.update_patterns(path_list)
 
     def __str__(self):
         return self.path
@@ -111,7 +111,8 @@ class NamedPathTree(object):
                     continue
             if 'path' not in options:
                 raise ValueError('No "path" parameter in pattern options')
-            self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope, **self.kwargs)
+            self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope,
+                                               default_context=self.default_context, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
 
@@ -221,17 +222,15 @@ class NamedPathTree(object):
         """
         match_names = []
         for name, path_instance in self._scope.items():  # type: NamedPath
-            pattern = path_instance.as_regex(self.path)
-            m = re.match(pattern, path, re.IGNORECASE)
-            if m:
-                match_names.append((name, m.groupdict(), path_instance))
+            context = path_instance.parse(path)
+            if context:
+                match_names.append((name, context, path_instance))
         if len(match_names) > 1:
             raise MultiplePatternMatchError(', '.join([x[0] for x in match_names]))
         if not match_names:
             raise NoPatternMatchError(path)
         name, context, instance = match_names[0]
         if with_context:
-            context = instance.convert_types(context)
             return name, context
         else:
             return name
@@ -695,6 +694,13 @@ class NamedPath(object):
         pattern = pattern.replace('.', '\\.')
         pattern = '^%s$' % pattern
         return pattern
+
+    def parse(self, path):
+        pattern = self.as_regex(self.base_dir)
+        m = re.match(pattern, path, re.IGNORECASE)
+        if m:
+            context = self.convert_types(m.groupdict())
+            return context
 
     def get_permission_list(self, **kwargs):
         """chmod parameter"""
