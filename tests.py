@@ -18,8 +18,11 @@ def patterns():
             "users": ["user1", None, "root"]
         },
         ASSETS='[PROJECT]/assets',
-        ASSET='[ASSETS]/{ENTITY_NAME}',
-        ASSET_MODELS='[ASSET]/models'
+        ASSET={'path': '[ASSETS]/{ENTITY_NAME}', 'preset': 'USER_DIR'},
+        ASSET_MODELS='[ASSET]/models',
+        option_presets={
+            "USER_DIR": {"perm": "755", "user": "test"}
+        }
     )
 
 
@@ -94,7 +97,7 @@ def test_path_glob_pattern(path_ctl1):
 
 def test_path_regex_pattern(path_ctl1):
     pat = path_ctl1.as_regex()
-    assert pat == r'^(?P<project_name>[^\/\\]+)/shot/(?P<entity_name>[^\/\\]+)/publish/v(?P<version>[^\/\\]+)/[^\/\\]+_v[^\/\\]+.(?P<ext>[^\/\\]+)$'
+    assert pat == r'^(?P<project_name>[^/\\]+)/shot/(?P<entity_name>[^/\\]+)/publish/v(?P<version>[^/\\]+)/[^/\\]+_v[^/\\]+\.(?P<ext>[^/\\]+)$'
 
 
 def test_path_permissions_list(path_ctl1):
