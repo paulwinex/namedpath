@@ -15,7 +15,8 @@ def patterns():
         SHOT_PUBLISH={
             'path': '[SHOT]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}.{EXT}',
             "groups": [None, 'work', None],
-            "users": ["user1", None, "root"]
+            "users": ["user1", None, "root"],
+            "types": {"VERSION": "int"}
         },
         ASSETS='[PROJECT]/assets',
         ASSET={'path': '[ASSETS]/{ENTITY_NAME}', 'preset': 'USER_DIR'},
@@ -66,10 +67,14 @@ def test_paths_solving(tree, context):
     assert p1 == p2
 
 
-def test_parsing(tree, context):
+def test_parsing_name(tree, context):
     path1 = tree.get_path('SHOT', context)
     name = tree.parse(path1)
     assert name == 'SHOT'
+
+
+def test_parsing_context(context, path_ctl1):
+    assert path_ctl1.parse(path_ctl1.solve(context)) == context
 
 
 def test_tree_props(tree):
@@ -133,6 +138,10 @@ def test_path_values(path_ctl1, path_ctl2):
     assert path_ctl2.get_absolute() == '/tmp/my_struct/{PROJECT_NAME}/assets/{ENTITY_NAME}/models'
     assert path_ctl2.get_relative() == '{PROJECT_NAME}/assets/{ENTITY_NAME}/models'
     assert path_ctl2.get_short() == 'models'
+
+
+def test_options_preset(tree):
+    assert tree.get_path_instance('ASSET').options == {'path': '[ASSETS]/{ENTITY_NAME}', 'user': 'test', 'perm': '755'}
 
 
 # I/O TESTS (need root permissions)
