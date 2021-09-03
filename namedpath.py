@@ -93,7 +93,13 @@ class NamedPathTree(object):
         return self.default_context
 
     def update_patterns(self, path_list):
-        """Init all paths instances"""
+        """
+        Update pattern list
+
+        Parameters
+        ----------
+        path_list: dict
+        """
         to_remove = []
         option_presets = path_list.pop('option_presets', {})
         for path_name, options in path_list.items():    # type: str, str
@@ -130,6 +136,13 @@ class NamedPathTree(object):
             self._scope.pop(name, None)
 
     def update_default_context(self, context):
+        """
+        Update existing default context
+
+        Parameters
+        ----------
+        context: dict
+        """
         self.default_context.update(context)
 
     # get path
@@ -159,6 +172,17 @@ class NamedPathTree(object):
         return path
 
     def get_path_variables(self, name):
+        """
+        Get all variable names in pattern path
+
+        Parameters
+        ----------
+        name: str
+
+        Returns
+        -------
+        list
+        """
         return self.get_path_instance(name).get_pattern_variables()
 
     def get_raw_path(self, name):
@@ -191,7 +215,7 @@ class NamedPathTree(object):
 
     def get_path_instance(self, name):
         """
-        Get PNPath instance by name
+        Get Path class instance by name
 
         Parameters
         ----------
@@ -217,6 +241,9 @@ class NamedPathTree(object):
         return tuple(sorted(self._scope.keys()))
 
     def iter_patterns(self):
+        """
+        Generator for paths iteration
+        """
         for name in self.get_path_names():
             yield self.get_path_instance(name)
 
@@ -252,13 +279,17 @@ class NamedPathTree(object):
         return self.get_path_instance(name).get_pattern_variables()
 
     def get_all_required_variables(self):
+        """
+        Get all required variables for all patterns
+
+        Returns
+        -------
+        list
+        """
         variables = set()
         for pat in self.iter_patterns():
             variables.update(pat.get_pattern_variables())
         return list(variables)
-
-    def filter_paths(self, root_path=None, name_in=None, parent_in=None):
-        raise NotImplementedError
 
     def is_empty(self):
         return len(self._scope) > 0
@@ -360,6 +391,12 @@ class NamedPathTree(object):
         raise NotImplementedError
 
     def show_tree(self, **kwargs):
+        """
+        Print tree structure to console
+
+        PATTERN_NAME| path
+
+        """
         def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
             for elem in sorted(elements, key=lambda x: x['inst'].name):
                 print(''.join(
@@ -404,6 +441,17 @@ class NamedPath(object):
         return '<FSPath %s "%s">' % (self.name, self.path)
 
     def get_context(self, context=None):
+        """
+        Collect context values
+
+        Parameters
+        ----------
+        context: dict
+
+        Returns
+        -------
+        dict
+        """
         ctx = copy.deepcopy(self.default_context)
         ctx.update(context)
         for k, v in self.options.get('defaults', {}).items():
@@ -600,6 +648,13 @@ class NamedPath(object):
     # parent
 
     def get_parent_name(self):
+        """
+        Get name of parent pattern
+
+        Returns
+        -------
+        str
+        """
         match = re.search(r"^\[(\w+)]/?(.*)", self.path)
         if match:
             return match.group(1)
@@ -620,6 +675,13 @@ class NamedPath(object):
                 raise PathNameError
 
     def get_all_parent_names(self):
+        """
+        Get list of all parent patterns
+
+        Returns
+        -------
+        list
+        """
         names = []
         p = self
         while True:
@@ -709,6 +771,13 @@ class NamedPath(object):
         return pattern
 
     def parse(self, path):
+        """
+        Extract context from path
+
+        Returns
+        -------
+        dict
+        """
         pattern = self.as_regex(self.base_dir)
         m = re.match(pattern, path, re.IGNORECASE)
         if m:
