@@ -115,7 +115,7 @@ class NamedPathTree(object):
             if preset_name:
                 for k, v in option_presets[preset_name].items():
                     options.setdefault(k, v)
-            # addative mode
+            # additive mode
             if path_name.endswith('+'):
                 path_name = path_name.strip('+')
                 if path_name in self._scope:
