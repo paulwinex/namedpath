@@ -95,20 +95,33 @@ class NamedPathTree(object):
     def update_patterns(self, path_list):
         """Init all paths instances"""
         to_remove = []
-        for path_name, options in path_list.items():
-            if not path_name:
+        option_presets = path_list.pop('option_presets', {})
+        for path_name, options in path_list.items():    # type: str, str
+            # skip empty and lowercase names
+            if not path_name or not path_name.isupper():
                 continue
+            # None in options mean DELETE pattern
             if options is None:
                 to_remove.append(path_name)
                 continue
+            # convert short path record to full options
             if isinstance(options, string_types):
                 options = dict(path=options)
-            path_name = path_name.upper()
+            # check options type
+            if not isinstance(options, dict):
+                raise TypeError('Wrong type of Pattern options')
+            # apply preset
+            preset_name = options.pop('preset', None)
+            if preset_name:
+                for k, v in option_presets[preset_name].items():
+                    options.setdefault(k, v)
+            # addative mode
             if path_name.endswith('+'):
                 path_name = path_name.strip('+')
                 if path_name in self._scope:
                     self._scope[path_name].options.update(options)
                     continue
+            # check options
             if 'path' not in options:
                 raise ValueError('No "path" parameter in pattern options')
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope,
