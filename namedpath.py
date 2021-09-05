@@ -265,7 +265,7 @@ class NamedPathTree(object):
         match_names = []
         for name, path_instance in self._scope.items():  # type: NamedPath
             context = path_instance.parse(path)
-            if context:
+            if context is not None:
                 match_names.append((name, context, path_instance))
         if len(match_names) > 1:
             raise MultiplePatternMatchError(', '.join([x[0] for x in match_names]))
@@ -322,14 +322,18 @@ class NamedPathTree(object):
             try:
                 parsed_name = self.parse(path)
             except NoPatternMatchError as e:
-                logger.warning(str(e))
-                result['errors'][name] = 'Error: '+str(e)
+                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
+                logger.warning(msg)
+                result['errors'][name] = msg
             except MultiplePatternMatchError as e:
-                logger.warning(str(e))
-                result['errors'][name] = 'Error: '+str(e)
+                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
+                logger.warning(msg)
+                result['errors'][name] = msg
             else:
                 if parsed_name != name:
-                    result['errors'][name] = 'Generated and parsed names not match: {} -> {}'.format(name, parsed_name)
+                    msg = 'Generated and parsed names not match: {} -> {}'.format(name, parsed_name)
+                    logger.warning(msg)
+                    result['errors'][name] = msg
                 else:
                     result['success'].append(name)
         logger.info('Total patterns: %s' % len(self._scope))
@@ -420,7 +424,10 @@ class NamedPathTree(object):
                 tr[par.name]['ch'].append(item)
             else:
                 tr['']['ch'].append(item)
-        _show(tr['']['ch'], max_name_width=max([len(x) for x in tr.keys()]), **kwargs)
+        print('ROOT: {}'.format(self.path))
+        print('='*50)
+        column_width = max([len(x) for x in tr.keys()])
+        _show(tr['']['ch'], max_name_width=column_width, **kwargs)
 
 
 class NamedPath(object):
