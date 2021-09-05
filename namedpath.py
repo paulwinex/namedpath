@@ -428,6 +428,7 @@ class NamedPathTree(object):
         print('='*50)
         column_width = max([len(x) for x in tr.keys()])
         _show(tr['']['ch'], max_name_width=column_width, **kwargs)
+        print('=' * 50)
 
 
 class NamedPath(object):
