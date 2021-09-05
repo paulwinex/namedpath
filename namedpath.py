@@ -36,6 +36,8 @@ class NamedPathTree(object):
 
     def __init__(self, root_path, path_list=None, default_context=None, **kwargs):
         self.kwargs = kwargs
+        if not isinstance(root_path, basestring):
+            raise ValueError('Root directory must be string type')
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
         self.default_context = {}
