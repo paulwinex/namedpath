@@ -36,7 +36,7 @@ class NamedPathTree(object):
 
     def __init__(self, root_path, path_list=None, default_context=None, **kwargs):
         self.kwargs = kwargs
-        if not isinstance(root_path, basestring):
+        if not isinstance(root_path, string_types):
             raise ValueError('Root directory must be string type')
         self._root_path = abspath(expandvars(expanduser(root_path)))
         self._scope = {}
@@ -955,7 +955,7 @@ def chmod(path, mode):
     if os.name == 'nt':
         raise OSError('Not implemented for Windows OS')
     # TODO: implement for windows
-    if isinstance(mode, basestring):
+    if isinstance(mode, string_types):
         mode = int(mode, 8)
     try:
         os.chmod(path, mode)
