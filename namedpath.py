@@ -682,7 +682,7 @@ class NamedPath(object):
             try:
                 return self._scope[parent_name]
             except KeyError:
-                raise PathNameError
+                raise PathNameError('No path named {}'.format(parent_name))
 
     def get_all_parent_names(self):
         """
@@ -986,12 +986,17 @@ class CustomFormatString(str):
         context = copy.deepcopy(kwargs)
         variables = re.findall(r"({([\w\d_:]+)([%s\w]+\(.*?\))?})" % self.sep, self)
         for full_pat, var, expr in variables:
+            var_name = var.split(':')[0].split(self.sep)[0]
+            if context.get(var_name) == '*':
+                self = CustomFormatString(str.replace(self, full_pat, '*'))
             if self.sep in expr:
                 methods = expr.split(self.sep)
                 _self = CustomFormatString(str.replace(self, full_pat, '{%s}' % var))
                 val = context.get(var.split(':')[0])
                 if not val:
                     raise ValueError('No value {} in {}'.format(var, context.keys()))
+                if val == '*':
+                    continue
                 for m in methods:
                     if not m:
                         continue
@@ -1007,7 +1012,7 @@ class CustomException(Exception):
     msg = ''
 
     def __init__(self, *args, **kwargs):
-        if args:
+        if not args:
             super(CustomException, self).__init__(*args)
         else:
             super(CustomException, self).__init__("{} {}".format(self.msg, args[0]).strip())
