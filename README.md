@@ -45,6 +45,8 @@ print tree.get_path('RENDER_PUBLISH', context)
 
 - Support generic string formatting and string methods call
 
+- Creating folder structure with context and partial context
+
 ```python
 # formatting
 pat1 = '[PARENT]/{VARIABLE:04d}'
@@ -56,3 +58,8 @@ pat3 = '[PARENT]/{VARIABLE|center(10, "_")}'
 
 -------
 Project still underdeveloped
+
+
+### Alternatives
+
+https://gitlab.com/4degrees/lucidity
