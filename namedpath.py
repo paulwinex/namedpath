@@ -122,7 +122,13 @@ class NamedPathTree(object):
             preset_name = options.pop('preset', None)
             if preset_name:
                 for k, v in option_presets[preset_name].items():
-                    options.setdefault(k, v)
+                    # merge dict
+                    if all([k in options, k in option_presets, isinstance(options[k], dict), isinstance(option_presets[k], dict)]):
+                        for _k, _v in option_presets[k].items():
+                            options[k].setdefault(_k, _v)
+                    # just copy value
+                    else:
+                        options.setdefault(k, v)
             # additive mode
             if path_name.endswith('+'):
                 path_name = path_name.strip('+')
@@ -130,8 +136,8 @@ class NamedPathTree(object):
                     self._scope[path_name].options.update(options)
                     continue
             # check options
-            if 'path' not in options:
-                raise ValueError('No "path" parameter in pattern options')
+            if 'path' not in options and path_name not in self._scope:
+                raise ValueError('No "path" parameter in pattern options: {}'.format(path_name))
             self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope,
                                                default_context=self.default_context, **self.kwargs)
         for name in to_remove:
@@ -437,6 +443,8 @@ class NamedPath(object):
     _default_file_permission = 0o644
 
     def __init__(self, base_dir, name, options, scope, **kwargs):
+        if 'path' not in options:
+            raise ValueError('No parameter "path" in options: {}'.format(name))
         self.name = name
         self.options = options
         self._scope = scope
@@ -550,7 +558,6 @@ class NamedPath(object):
                                                      include_parents=include_parents):
                             yield part
                     except PathContextError:
-                        print('EXIT PARENT')
                         return
             else:
                 base = self.base_dir
@@ -567,7 +574,8 @@ class NamedPath(object):
             if dirs_only and os.path.splitext(part)[1]:
                 continue
             if solve:
-                variables = [val.split(':')[0].upper() for val in re.findall(r"{(.*?)}", part)]
+                # variables = [val.split(':')[0].split('|')[0].upper() for val in re.findall(r"{(.*?)}", part)]
+                variables = self.get_pattern_variables(part)
                 miss = [x for x in variables if x not in context_variables]
                 if miss:
                     if skip_context_errors:
@@ -607,7 +615,7 @@ class NamedPath(object):
                 context[name.lower()] = eval(expr)
         return context
 
-    def get_pattern_variables(self):
+    def get_pattern_variables(self, pattern=None):
         """
         Extract variables names from pattern
 
@@ -616,8 +624,8 @@ class NamedPath(object):
         list
         """
         variables = []
-        for val in re.findall(r"{(.*?)}", self.get_relative()):
-            variables.append(val.split(':')[0])
+        for val in re.findall(r"{(.*?)}", pattern or self.get_relative()):
+            variables.append(val.split(':')[0].split('|')[0])
         return sorted(list(set(variables)))
 
     # paths
