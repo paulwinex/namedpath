@@ -542,7 +542,7 @@ class NamedPath(object):
             rel_path = os.path.join(*parts)
         else:
             rel_path = ''
-        return os.path.join(parent_path, rel_path)
+        return os.path.normpath(os.path.join(parent_path, rel_path))
 
     def iter_path(self, context=None, solve=True, dirs_only=True,
                   skip_context_errors=False, full_path=False, include_parents=False):
