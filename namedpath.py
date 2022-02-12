@@ -123,7 +123,10 @@ class NamedPathTree(object):
             if preset_name:
                 for k, v in option_presets[preset_name].items():
                     # merge dict
-                    if all([k in options, k in option_presets, isinstance(options[k], dict), isinstance(option_presets[k], dict)]):
+                    if all([k in options,
+                            k in option_presets,
+                            isinstance(options.get(k), dict),
+                            isinstance(option_presets.get(k), dict)]):
                         for _k, _v in option_presets[k].items():
                             options[k].setdefault(_k, _v)
                     # just copy value
@@ -246,7 +249,8 @@ class NamedPathTree(object):
         -------
         tuple
         """
-        return tuple(sorted(self._scope.keys()))
+        # return tuple(sorted(self._scope.keys()))
+        return tuple(self._scope.keys())
 
     def iter_patterns(self):
         """
@@ -410,13 +414,14 @@ class NamedPathTree(object):
 
         """
         def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
-            for elem in sorted(elements, key=lambda x: x['inst'].name):
+            # for elem in sorted(elements, key=lambda x: x['inst'].name):
+            for elem in elements:
                 print(''.join(
                     [
                         placeholder*indent*2 if (not print_path and print_name) else '',
                         ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
                         placeholder*indent*2 if print_path else '',
-                        elem['inst'].get_short() if print_path else '']))
+                        ('/'+elem['inst'].get_short()) if print_path else '']))
                 if elem['ch']:
                     _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
                           indent=indent+1, placeholder=placeholder)
