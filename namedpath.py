@@ -455,7 +455,7 @@ class NamedPath(object):
         self._scope = scope
         self.kwargs = kwargs
         self.base_dir = base_dir
-        self.default_context = kwargs.get('default_context', {})
+        self.default_context = lower_keys(kwargs.get('default_context', {}))
 
     def __str__(self):
         return self.path
@@ -476,11 +476,11 @@ class NamedPath(object):
         dict
         """
         ctx = copy.deepcopy(self.default_context)
-        ctx.update(context)
+        ctx.update(lower_keys(context))
         for k, v in self.options.get('defaults', {}).items():
-            ctx.setdefault(k, v)
+            ctx.setdefault(k.lower(), v)
         ctx.setdefault('user', getpass.getuser())
-        return ctx
+        return lower_keys(ctx)
 
     @property
     def path(self):
@@ -974,6 +974,10 @@ def chmod(path, mode):
         os.chmod(path, mode)
     except Exception as e:
         raise type(e)("%s %s" % (e, mode))
+
+
+def lower_keys(dct):
+    return {k.lower(): v for k, v in dct.items()}
 
 
 class CustomFormatString(str):
