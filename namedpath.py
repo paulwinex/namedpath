@@ -308,12 +308,15 @@ class NamedPathTree(object):
 
     # check
 
-    def check_uniqueness_of_parsing(self, full_context):
+    def check_patterns(self, full_context):
         """
-        Checking your patterns for uniques.
+        Checking your patterns for uniques and valid parsing.
         Each path should be reversible without match with other patterns.
         This checking require full context with variables for all patterns.
         Use this method when you develop your structure.
+        Dont use two variables without separators! It cant be parsed unambiguously.
+            WRONG: {FILENAME}{EXT}
+            CORRECT: {FILENAME}.{EXT}
 
         Parameters
         ----------
@@ -346,6 +349,10 @@ class NamedPathTree(object):
                     result['errors'][name] = msg
                 else:
                     result['success'].append(name)
+            if '}{' in self.get_path_instance(name).get_relative():
+                msg = 'Unwanted kind of pattern ambiguous parsing'
+                logger.warning(msg)
+                result['errors'][name] = msg
         logger.info('Total patterns: %s' % len(self._scope))
         logger.info('Success parsing: %s' % len(result['success']))
         logger.info('Errors: %s' % len(result['errors']))
