@@ -518,7 +518,7 @@ class NamedPath(object):
 
     # solve
 
-    def solve(self, context, skip_context_errors=False, relative=False, local=False):
+    def solve(self, context, skip_context_errors=False, relative=False, local=False, **kwargs):
         """
         Resolve path from pattern with context to relative path
 
