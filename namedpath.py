@@ -730,6 +730,16 @@ class NamedPath(object):
         names.reverse()
         return names
 
+    def get_children(self, recursive=False):
+        names = []
+        for child in self._scope.values():
+            if child.get_parent_name() == self.name:
+                names.append(child)
+        if names and recursive:
+            for child in names:
+                names.extend(child.get_children())
+        return names
+
     # patterns
 
     def as_glob(self, prefix=None, context=None):
