@@ -580,25 +580,27 @@ class NamedPath(object):
 
     def get_parts(self, context=None, solve=False, dirs_only=False, skip_context_errors=False):
         context = self.get_context(context or {})
-        context_variables = [x.upper() for x in context.keys()]
         parts = []
         for part in self.get_short().split(os.path.sep):
             if dirs_only and os.path.splitext(part)[1]:
                 continue
             if solve:
-                # variables = [val.split(':')[0].split('|')[0].upper() for val in re.findall(r"{(.*?)}", part)]
-                variables = self.get_pattern_variables(part)
-                miss = [x for x in variables if x not in context_variables]
-                if miss:
-                    if skip_context_errors:
-                        break
-                    else:
-                        raise PathContextError(str(miss))
-                part = self.expand_variables(part, context)
+                part = self.solve_text_with_variables(part, context, skip_context_errors)
             parts.append(part)
         return parts
 
-    def expand_variables(self, text, context):
+    def solve_text_with_variables(self, text, context, skip_context_errors=False):
+        context_variables = [x.upper() for x in context.keys()]
+        variables = self.get_pattern_variables(text)
+        miss = [x for x in variables if x not in context_variables]
+        if miss:
+            if skip_context_errors:
+                return
+            else:
+                raise PathContextError(str(miss))
+        return self.expand_variables(text, context, skip_context_errors)
+
+    def expand_variables(self, text, context, skip_context_errors=False):
         """
         Resolve variables in pattern
 
@@ -606,12 +608,17 @@ class NamedPath(object):
         ----------
         text: str
         context: dict
+        skip_context_errors: bool
 
         Returns
         -------
         str
         """
         ctx = self.get_context(context or {})
+        for key, value in ctx.items():
+            if isinstance(value, str) and value != text:
+                if re.search(r'{[\w\d_]+}', value):
+                    ctx[key] = self.solve_text_with_variables(value, ctx, skip_context_errors)
         return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()}, _options=self.options)
 
     def convert_types(self, context):
