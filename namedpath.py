@@ -586,7 +586,8 @@ class NamedPath(object):
                 continue
             if solve:
                 part = self.solve_text_with_variables(part, context, skip_context_errors)
-            parts.append(part)
+            if part:
+                parts.append(part)
         return parts
 
     def solve_text_with_variables(self, text, context, skip_context_errors=False):
@@ -848,7 +849,7 @@ class NamedPath(object):
 
     # I/O
 
-    def makedirs(self, context, skip_context_errors=False, **kwargs):
+    def makedirs(self, context, skip_context_errors=False, recursive=False, **kwargs):
         parent = self.get_parent()
         if parent:
             try:
@@ -897,6 +898,12 @@ class NamedPath(object):
                 if real_path != link_source:
                     raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
                         path, real_path, link_source))
+        if recursive:
+            for child in self.get_children(recursive=True):
+                child.makedirs(
+                    context=context,
+                    skip_context_errors=skip_context_errors
+                )
         return True
 
     def remove_empty_dirs(self, context):
