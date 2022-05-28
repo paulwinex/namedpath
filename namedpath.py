@@ -1037,15 +1037,16 @@ class CustomFormatString(str):
         for full_pat, var, expr in variables:
             var_name = var.split(':')[0].split(self.sep)[0]
             prefix = options.get('prefix', {}).get(var_name, '')
+            suffix = options.get('suffix', {}).get(var_name, '')
             if context.get(var_name) == '*':
-                self = CustomFormatString(str.replace(self, full_pat, prefix+'*'))
+                self = CustomFormatString(str.replace(self, full_pat, prefix+'*'+suffix))
             elif context.get(var_name) in ("", None):
                 self = CustomFormatString(str.replace(self, full_pat, ''))
             if prefix:
-                self = CustomFormatString(str.replace(self, full_pat, prefix+full_pat))
+                self = CustomFormatString(str.replace(self, full_pat, prefix+full_pat+suffix))
             if self.sep in expr:
                 methods = expr.split(self.sep)
-                _self = CustomFormatString(str.replace(self, full_pat, '{%s}{%s}' % (prefix, var)))
+                _self = CustomFormatString(str.replace(self, full_pat, '{%s}{%s}{%s}' % (prefix, var,suffix)))
                 val = context.get(var.split(':')[0])
                 if not val:
                     raise ValueError('No value {} in {}'.format(var, context.keys()))
