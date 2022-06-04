@@ -59,6 +59,10 @@ pat3 = '[PARENT]/{VARIABLE|center(10, "_")}'
 -------
 Project still underdeveloped
 
+TODO:
+
+- set permissions and owner
+- transfer tool
 
 ### Alternatives
 
