@@ -335,11 +335,11 @@ class NamedPathTree(object):
             try:
                 parsed_name = self.parse(path)
             except NoPatternMatchError as e:
-                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
+                msg = 'Error "{}" {}: {}'.format(name, e.__class__.__name__, e)
                 logger.warning(msg)
                 result['errors'][name] = msg
             except MultiplePatternMatchError as e:
-                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
+                msg = 'Error "{}" {}: {}'.format(name, e.__class__.__name__, e)
                 logger.warning(msg)
                 result['errors'][name] = msg
             else:
@@ -428,7 +428,7 @@ class NamedPathTree(object):
                         placeholder*indent*2 if (not print_path and print_name) else '',
                         ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
                         placeholder*indent*2 if print_path else '',
-                        ('/'+elem['inst'].get_short()) if print_path else '']))
+                        ('/'+elem['inst'].get_short().replace('\\', '/')) if print_path else '']))
                 if elem['ch']:
                     _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
                           indent=indent+1, placeholder=placeholder)
@@ -847,6 +847,15 @@ class NamedPath(object):
         def is_digit(name):
             return self.get_value_type(name) is int
 
+        def get_prefix(name):
+            return self.options.get('prefix', {}).get(name.upper())
+
+        def get_suffix(name):
+            return self.options.get('suffix', {}).get(name.upper())
+
+        def get_default(name):
+            return self.options.get('defaults', {}).get(name.upper())
+
         def get_subpattern(match):
             v = match.group(0)
             name = v.strip('{}').split(':')[0].split('|')[0].lower()
@@ -858,16 +867,40 @@ class NamedPath(object):
                 except KeyError:
                     pass
             if name in names:
-                return number_pattern if is_digit(name) else simple_pattern
-            names.add(name)
-            if named_values:
-                return (named_number_pattern % name) if is_digit(name) else (named_pattern % name)
+                pat = number_pattern if is_digit(name) else simple_pattern
             else:
-                return number_pattern if is_digit(name) else simple_pattern
+                names.add(name)
+                if named_values:
+                    pat = (named_number_pattern % name) if is_digit(name) else (named_pattern % name)
+                else:
+                    pat = number_pattern if is_digit(name) else simple_pattern
+            # prefix
+            pfx_pattern = ''
+            pfx = get_prefix(name)
+            if pfx:
+                if get_default(name) is None:
+                    pfx_pattern = f'({pfx})'
+                else:
+                    pfx_pattern = f'({pfx})?'
+            # suffix
+            sfx_pattern = ''
+            sfx = get_suffix(name)
+            if sfx:
+                if get_default(name) is None:
+                    sfx_pattern = f'({sfx})'
+                else:
+                    sfx_pattern = f'({sfx})?'
+            if pfx_pattern:
+                logger.debug(f'add prefix for {name}: {pfx_pattern}')
+                pat = pfx_pattern+pat
+            if sfx_pattern:
+                logger.debug(f'add suffix for {name}: {sfx_pattern}')
+                pat = pat + sfx_pattern
+            return pat
 
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
         pattern = pattern.replace('.', '\\.')
-        pattern = '^%s$' % pattern
+        pattern = f'^{pattern}$'
         return pattern
 
     def parse(self, path):
