@@ -349,10 +349,10 @@ class NamedPathTree(object):
                     result['errors'][name] = msg
                 else:
                     result['success'].append(name)
-            if '}{' in self.get_path_instance(name).get_relative():
-                msg = 'Unwanted kind of pattern ambiguous parsing'
-                logger.warning(msg)
-                result['errors'][name] = msg
+            # if '}{' in self.get_path_instance(name).get_relative():
+            #     msg = 'Unwanted kind of pattern ambiguous parsing'
+            #     logger.warning(msg)
+            #     result['errors'][name] = msg
         logger.info('Total patterns: %s' % len(self._scope))
         logger.info('Success parsing: %s' % len(result['success']))
         logger.info('Errors: %s' % len(result['errors']))
@@ -463,6 +463,17 @@ class NamedPath(object):
         self.kwargs = kwargs
         self.base_dir = base_dir
         self.default_context = lower_keys(kwargs.get('default_context', {}))
+        self.check_options()
+
+    def check_options(self):
+        if self.options:
+            for key, value in self.options.items():
+                if key == 'types':
+                    for name, tp in self.options['types'].items():
+                        try:
+                            eval(tp)
+                        except NameError:
+                            raise TypeError(f'Wrong type name for value {name}: {tp}')
 
     def __str__(self):
         return self.path
@@ -629,11 +640,47 @@ class NamedPath(object):
         types = self.options.get('types')
         if not types:
             return context
-        for name, tp in types.items():
-            if name.lower() in context:
-                expr = '{}({})'.format(tp, repr(context[name.lower()]))
-                context[name.lower()] = eval(expr)
+        if not set(map(str.lower, types)).intersection(set(context)):
+            return context
+        for name in types:
+            value = context.get(name.lower())
+            if value is None:
+                continue
+            obj_type = self.get_value_type(name)
+            try:
+                context[name.lower()] = obj_type(value)
+            except Exception as e:
+                logger.exception(f'{self.name}: Wrong value for type {obj_type}: {repr(value)}')
+                raise
         return context
+
+    def get_value_type(self, name):
+        """
+        Convert type name to object
+        Allowed values:
+            int
+            float
+            my_module.myClass
+            ...
+        Default value:
+            str
+
+        Parameters
+        ----------
+        name: str
+
+        Returns
+        -------
+        object
+        """
+        import pydoc
+        type_name = self.options.get('types', {}).get(name.upper(), 'str')
+        if '.' in type_name:
+            obj = pydoc.locate(type_name)
+            if not type_name:
+                raise TypeError(f'Type {type_name} for value {name} not found')
+            return obj
+        return eval(type_name)
 
     def get_pattern_variables(self, pattern=None):
         """
@@ -790,10 +837,15 @@ class NamedPath(object):
         """
         simple_pattern = r'[^/\\]+'
         named_pattern = r'(?P<%s>[^/\\]+)'
+        number_pattern = r'[\d]+'
+        named_number_pattern = r'(?P<%s>[\d]+)'
         path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
         names = set()
+
+        def is_digit(name):
+            return self.get_value_type(name) is int
 
         def get_subpattern(match):
             v = match.group(0)
@@ -806,12 +858,12 @@ class NamedPath(object):
                 except KeyError:
                     pass
             if name in names:
-                return simple_pattern
+                return number_pattern if is_digit(name) else simple_pattern
             names.add(name)
             if named_values:
-                return named_pattern % name
+                return (named_number_pattern % name) if is_digit(name) else (named_pattern % name)
             else:
-                return simple_pattern
+                return number_pattern if is_digit(name) else simple_pattern
 
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
         pattern = pattern.replace('.', '\\.')
