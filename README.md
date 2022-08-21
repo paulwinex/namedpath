@@ -18,7 +18,7 @@ path_list = dict(
     RENDER_PUBLISH='[RENDER]/{VERSION:04d}/{FILE_NAME}_{FRAME}.{EXT}',
 )
 # create tree instance
-tree = namedpath.NamedPathTree('~/my_projects', path_list)
+tree = namedpath.NamedPathTree('/mnt/my_projects', path_list)
 # define context
 context = {
     'project_name': 'project1',
@@ -28,24 +28,24 @@ context = {
     'ext': 'exr',
     'frame': '%04d'
 }
-# now you can generate path
+# now you can generate the path
 print(tree.get_path('RENDER_PUBLISH', context))
-# C:\Users\username\my_projects\project1\shots\sh01\render\0015\test_render_%04d.exr
+# /mnt/my_projects/project1/shots/sh01/render/0015/test_render_%04d.exr
 
 # you can change any patterns and no need change the code after that
 path_list['RENDER_PUBLISH'] = '[RENDER]/publish/v{VERSION:05d}/{SHOT_NAME}_rnd_{FRAME}.{EXT}'
-tree = namedpath.NamedPathTree('~/my_projects', path_list)
-print tree.get_path('RENDER_PUBLISH', context)
-# C:\Users\username\my_projects\project1\shots\sh01\render\publish\v00015\sh01_rnd_%04d.exr
+tree = namedpath.NamedPathTree('/mnt/my_projects', path_list)
+print(tree.get_path('RENDER_PUBLISH', context))
+# /home/username/my_projects/project1/shots/sh01/render/publish/v00015/sh01_rnd_%04d.exr
 ```
 
-- Any  pattern can be inherited from other pattern
+- Any pattern can be inherited from other pattern
 
 - Each structure can have a different pattern set, but it will work with the same code
 
 - Support generic string formatting and string methods call
 
-- Creating folder structure with context and partial context
+- Creating folder structure with context or partial context
 
 ```python
 # formatting
