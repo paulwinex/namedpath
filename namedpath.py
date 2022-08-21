@@ -9,6 +9,10 @@ import getpass
 import re
 import sys
 
+
+__version__ = '0.1.1'
+__author__ = 'paulwinex@gmail.com'
+
 if sys.version_info.major < 3:
     string_types = basestring,
 else:
@@ -272,6 +276,7 @@ class NamedPathTree(object):
         -------
         str or list
         """
+        path = str(path).replace('/', os.path.sep).replace('\\', os.path.sep)
         match_names = []
         for name, path_instance in self._scope.items():  # type: NamedPath
             context = path_instance.parse(path)
