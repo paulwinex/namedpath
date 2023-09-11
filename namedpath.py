@@ -1,6 +1,6 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
-from os.path import join, normpath, exists, abspath, expanduser, expandvars
+from os.path import join, normpath, exists
 from pathlib import Path
 import os
 import json
@@ -8,8 +8,8 @@ import copy
 import logging
 import getpass
 import re
-import sys
-__version__ = '0.3'
+
+__version__ = '0.1.2'
 
 from typing import Callable
 
@@ -277,7 +277,7 @@ class NamedPathTree:
             if context is not None:
                 match_names.append((name, context, path_instance))
         if len(match_names) > 1:
-            raise MultiplePatternMatchError(', '.join([x[0] for x in match_names]))
+            raise MultiplePatternMatchError(', '.join([str(x[0]) for x in match_names]))
         if not match_names:
             raise NoPatternMatchError(path)
         name, context, instance = match_names[0]
