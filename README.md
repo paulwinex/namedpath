@@ -39,13 +39,13 @@ print(tree.get_path('RENDER_PUBLISH', context))
 # /home/username/my_projects/project1/shots/sh01/render/publish/v00015/sh01_rnd_%04d.exr
 ```
 
-- Any pattern can be inherited from other pattern
+- Any pattern can be inherited from another pattern.
 
-- Each structure can have a different pattern set, but it will work with the same code
+- Each structure can have a different pattern set, but it will work with the same code.
 
-- Support generic string formatting and string methods call
+- Supports generic string formatting and string method calls.
 
-- Creating folder structure with context or partial context
+- Creates a folder structure with context or partial context.
 
 ```python
 # formatting
