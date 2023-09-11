@@ -11,6 +11,8 @@ import re
 import sys
 __version__ = '0.3'
 
+from typing import Callable
+
 
 def __setup_simple_logger(lg):      # type: (logging.Logger) -> logging.Logger
     lg.addHandler(logging.StreamHandler())
@@ -41,10 +43,10 @@ class NamedPathTree:
             self.update_patterns(path_list)
 
     def __str__(self) -> str:
-        return self.path
+        return self.root
 
     def __repr__(self) -> str:
-        return '<NamedPathTree "{}">'.format(self.path)
+        return '<NamedPathTree "{}">'.format(self.root)
 
     @classmethod
     def load_from_files(cls, root: str, files: list):
@@ -72,7 +74,7 @@ class NamedPathTree:
     # props
 
     @property
-    def path(self) -> str:
+    def root(self) -> str:
         """
         Root path of tree
 
@@ -135,7 +137,7 @@ class NamedPathTree:
             # check options
             if 'path' not in options and path_name not in self._scope:
                 raise ValueError('No "path" parameter in pattern options: {}'.format(path_name))
-            self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope,
+            self._scope[path_name] = NamedPath(self.root, path_name, options, self._scope,
                                                default_context=self.default_context, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
@@ -174,7 +176,7 @@ class NamedPathTree:
         path = ctl.solve(context, skip_context_errors=skip_context_errors, **kwargs)
         if create and not exists(path):
             ctl.makedirs(context, skip_context_errors=skip_context_errors)
-        return path.as_posix()
+        return path
 
     def get_path_variables(self, name: str) -> list:
         """
@@ -251,6 +253,10 @@ class NamedPathTree:
         """
         for name in self.get_path_names():
             yield self.get_path_instance(name)
+
+    def iter_paths(self, context):
+        for pattern in self.iter_patterns():
+            yield pattern.solve(context)
 
     def parse(self, path: str, with_context=False):
         """
@@ -363,7 +369,12 @@ class NamedPathTree:
 
     # utils
 
-    def transfer_to(self, other_tree, names_map=None, move=False):
+    def transfer_to(self,
+                    other_tree: 'NamedPathTree',
+                    pattern_names_map: dict | Callable = None,
+                    context_keys_map: dict | Callable = None,
+                    context_values_map: dict | Callable = None,
+                    action: Callable = None) -> dict:
         """
         Move files from one tree to others.
         All names must be matched or have renamed map.
@@ -372,16 +383,62 @@ class NamedPathTree:
         ----------
         other_tree: NamedPathTree
             Target tree
-        names_map: dict
-            rename map
-        move: bool
-            Copy or move files
+        pattern_names_map: dict
+            rename map for pattern names
+        context_keys_map: dict
+            rename map for context keys
+        context_values_map: dict
+            replace context values
+        action: Callable
+            Action for paths. Must receive tho values. Default print()
 
         Returns
         -------
         dict
         """
-        raise NotImplementedError
+        def remap_pattern_name(name: str) -> str:
+            if pattern_names_map:
+                if callable(pattern_names_map):
+                    return pattern_names_map(name)
+                elif name in pattern_names_map:
+                    return pattern_names_map[name]
+            return name
+
+        def remap_context_name(name):
+            if context_keys_map:
+                if callable(context_keys_map):
+                    return context_keys_map(name)
+                elif name in context_keys_map:
+                    return context_keys_map[name]
+            return name
+
+        def replace_context_values(key, value):
+            if context_values_map:
+                if callable(context_values_map):
+                    return context_values_map(key, value)
+                elif key in context_values_map:
+                    return context_values_map[key]
+            return value
+
+        skipped_paths = []
+        path_pairs = []
+        for path in Path(self.root).rglob('*'):
+            try:
+                pat_name, context = self.parse(path.as_posix(), True)
+            except NoPatternMatchError as e:
+                logger.warning(f"{e}: {path}")
+                skipped_paths.append(path.as_posix())
+                continue
+            new_pat_name = remap_pattern_name(pat_name)
+            new_context = {remap_context_name(k): replace_context_values(k, v) for k, v in context.items()}
+            new_path = other_tree.get_path(new_pat_name, new_context)
+            if action:
+                action(path.as_posix(), new_path)
+            path_pairs.append(dict(old_path=path.as_posix(), new_path=new_path))
+        return dict(
+            remapped_paths=path_pairs,
+            skipped_paths=skipped_paths
+        )
 
     # I/O
 
@@ -428,7 +485,7 @@ class NamedPathTree:
                 tr[par.name]['ch'].append(item)
             else:
                 tr['']['ch'].append(item)
-        print('ROOT: {}'.format(self.path))
+        print('ROOT: {}'.format(self.root))
         print('='*50)
         column_width = max([len(x) for x in tr.keys()])
         _show(tr['']['ch'], max_name_width=column_width, **kwargs)
@@ -448,7 +505,7 @@ class NamedPath(object):
         self._scope = scope
         self.kwargs = kwargs
         self.base_dir = Path(base_dir)
-        self.default_context = lower_keys(kwargs.get('default_context', {}))
+        self.default_context = kwargs.get('default_context', {})
 
     def __str__(self):
         return self.path
@@ -461,11 +518,11 @@ class NamedPath(object):
         Collect context values
         """
         ctx = copy.deepcopy(self.default_context)
-        ctx.update(lower_keys(context))
+        ctx.update(context)
         for k, v in self.options.get('defaults', {}).items():
-            ctx.setdefault(k.lower(), v)
+            ctx.setdefault(k, v)
         ctx.setdefault('user', getpass.getuser())
-        return lower_keys(ctx)
+        return ctx
 
     @property
     def path(self) -> str:
@@ -493,7 +550,7 @@ class NamedPath(object):
     # solve
 
     def solve(self, context: dict, skip_context_errors: bool = False,
-              relative: bool = False, local: bool = False) -> Path:
+              relative: bool = False, local: bool = False) -> str:
         """
         Resolve path from pattern with context to relative path
         """
@@ -513,7 +570,7 @@ class NamedPath(object):
             rel_path = Path(*parts)
         else:
             rel_path = ''
-        return Path(parent_path, rel_path)
+        return Path(parent_path, rel_path).as_posix()
 
     def iter_path(self, context: dict = None, solve: bool = True, dirs_only: bool = True,
                   skip_context_errors: bool = False, full_path: bool = False, include_parents: bool = False):
@@ -545,7 +602,8 @@ class NamedPath(object):
     def get_parts(self, context: dict = None, solve: bool = False,
                   dirs_only: bool = False, skip_context_errors: bool = False) -> list:
         context = self.get_context(context or {})
-        context_variables = [x.upper() for x in context.keys()]
+        # context_variables = [x.upper() for x in context.keys()]
+        context_variables = list(context.keys())
         parts = []
         for part in Path(self.get_short()).parts:
             if dirs_only and Path(part).suffix:
@@ -583,13 +641,14 @@ class NamedPath(object):
         """
         Convert context types after parsing
         """
+        import builtins
         types = self.options.get('types')
         if not types:
             return context
         for name, tp in types.items():
-            if name.lower() in context:
-                expr = '{}({})'.format(tp, repr(context[name.lower()]))
-                context[name.lower()] = eval(expr)
+            if name in context:
+                func = getattr(builtins, tp)
+                context[name] = func(context[name])
         return context
 
     def get_pattern_variables(self, pattern: str = None) -> list:
@@ -733,7 +792,7 @@ class NamedPath(object):
 
         def get_subpattern(match):
             v = match.group(0)
-            name = v.strip('{}').split(':')[0].split('|')[0].lower()
+            name = v.strip('{}').split(':')[0].split('|')[0]#.lower()
             if context:
                 try:
                     expanded = self.expand_variables(v, context)
@@ -762,7 +821,7 @@ class NamedPath(object):
         m = re.match(pattern, str(path), re.IGNORECASE)
         if m:
             context = self.convert_types(m.groupdict())
-            return context
+            return {k.upper(): v for k, v in context.items()}
 
     def get_permission_list(self, **kwargs) -> list:
         """chmod parameter"""
@@ -933,8 +992,8 @@ def chmod(path: str, mode: str):
         raise type(e)("%s %s" % (e, mode))
 
 
-def lower_keys(dct: dict) -> dict:
-    return {k.lower(): v for k, v in dct.items()}
+# def lower_keys(dct: dict) -> dict:
+    # return {k.lower(): v for k, v in dct.items()}
 
 
 class CustomFormatString(str):
@@ -975,7 +1034,6 @@ class CustomFormatString(str):
                     if not m:
                         continue
                     expression_to_eval = 'val.%s' % m
-                    # print(expression_to_eval)
                     val = eval(expression_to_eval)
                 context[var] = val
                 self = _self
