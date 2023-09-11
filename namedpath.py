@@ -140,7 +140,7 @@ class NamedPathTree:
         for name in to_remove:
             self._scope.pop(name, None)
 
-    def update_default_context(self, context):
+    def update_default_context(self, context: dict):
         """
         Update existing default context
 
@@ -393,6 +393,7 @@ class NamedPathTree:
             if root_path_name not in self.get_path_names():
                 raise PathNameError
             paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
+        context = context or self.get_context()
         for path_ctl in paths:
             path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
 

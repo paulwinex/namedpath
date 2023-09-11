@@ -1,9 +1,11 @@
+import getpass
 import os
 from namedpath import NamedPathTree, PathContextError
 import pytest
 import tempfile
 
 ROOT = os.path.join(tempfile.gettempdir(), 'my_struct')
+CURRENT_USER = getpass.getuser()
 
 
 @pytest.fixture()
@@ -14,8 +16,8 @@ def patterns():
                 SHOT='[SHOTS]/{ENTITY_NAME}',
                     SHOT_PUBLISH={
                         'path': '[SHOT]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}.{EXT}',
-                        "groups": [None, 'work', None],
-                        "users": ["user1", None, "root"],
+                        "groups": [None, CURRENT_USER, None],
+                        "users": [CURRENT_USER, None, "root"],
                         "types": {"VERSION": "int"}
                     },
             ASSETS='[PROJECT]/assets',
@@ -111,14 +113,14 @@ def test_path_permissions_list(path_ctl1):
 
 
 def test_path_group_list(path_ctl1, path_ctl2):
-    assert path_ctl1.get_group_list() == [None, 'work', None]
-    assert path_ctl1.get_group_list(default_group='test') == ['test', 'work', 'test']
+    assert path_ctl1.get_group_list() == [None, CURRENT_USER, None]
+    assert path_ctl1.get_group_list(default_group='test') == ['test', CURRENT_USER, 'test']
     assert path_ctl2.get_group_list() == [None]
 
 
 def test_path_user_list(path_ctl1, path_ctl2):
-    assert path_ctl1.get_user_list() == ['user1', None, 'root']
-    assert path_ctl1.get_user_list(default_user='test') == ['user1', 'test', 'root']
+    assert path_ctl1.get_user_list() == [CURRENT_USER, None, 'root']
+    assert path_ctl1.get_user_list(default_user='test') == [CURRENT_USER, 'test', 'root']
     assert path_ctl2.get_user_list() == [None]
 
 
@@ -144,11 +146,11 @@ def test_options_preset(tree):
     assert tree.get_path_instance('ASSET').options == {'path': '[ASSETS]/{ENTITY_NAME}', 'user': 'test', 'perm': '755'}
 
 
-# I/O TESTS (need root permissions)
+# I/O TESTS
 
-def _test_makedirs_tree(tree):
-    tree.makedirs()
+def test_makedirs_tree(tree, context):
+    tree.makedirs(context)
 
 
-def _test_makedirs_path(path_ctl1):
-    path_ctl1.makedirs()
+def test_makedirs_path(path_ctl1, context):
+    path_ctl1.makedirs(context)
