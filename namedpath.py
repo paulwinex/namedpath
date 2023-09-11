@@ -1,6 +1,7 @@
 # coding=utf-8
 from __future__ import print_function, absolute_import
 from os.path import join, normpath, exists, abspath, expanduser, expandvars
+from pathlib import Path
 import os
 import json
 import copy
@@ -8,15 +9,9 @@ import logging
 import getpass
 import re
 import sys
+__version__ = '0.3'
 
-
-__version__ = '0.1.1'
-__author__ = 'paulwinex@gmail.com'
-
-if sys.version_info.major < 3:
-    string_types = basestring,
-else:
-    string_types = str,
+from typing import Callable
 
 
 def __setup_simple_logger(lg):      # type: (logging.Logger) -> logging.Logger
@@ -29,20 +24,17 @@ logger = logging.getLogger(__name__)
 if not logger.handlers:
     logger = __setup_simple_logger(logger)
 
-if sys.version_info.major > 2:
-    unicode = type
 
-
-class NamedPathTree(object):
+class NamedPathTree:
     """
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path, path_list=None, default_context=None, **kwargs):
+    def __init__(self, root_path: str, path_list: dict = None, default_context: dict = None, **kwargs):
         self.kwargs = kwargs
-        if not isinstance(root_path, string_types):
+        if not isinstance(root_path, str):
             raise ValueError('Root directory must be string type')
-        self._root_path = abspath(expandvars(expanduser(root_path)))
+        self._root_path = Path(root_path).resolve().as_posix()
         self._scope = {}
         self.default_context = {}
         if default_context:
@@ -50,22 +42,22 @@ class NamedPathTree(object):
         if path_list:
             self.update_patterns(path_list)
 
-    def __str__(self):
-        return self.path
+    def __str__(self) -> str:
+        return self.root
 
-    def __repr__(self):
-        return '<NamedPathTree "{}">'.format(self.path)
+    def __repr__(self) -> str:
+        return '<NamedPathTree "{}">'.format(self.root)
 
     @classmethod
-    def load_from_files(cls, root, files):
+    def load_from_files(cls, root: str, files: list):
         patterns = {}
         for f in files:
             patterns.update(cls._load_commented_json(f))
         return cls(root, patterns)
 
     @staticmethod
-    def _load_commented_json(path, **kwargs):
-        text = open(path).read()
+    def _load_commented_json(path: str, **kwargs) -> dict:
+        text = Path(path).read_text()
         regex = r'\s*(/{2}).*$'
         regex_inline = r'(:?(?:\s)*([A-Za-z\d.{}]*)|((?<=\").*\"),?)(?:\s)*(((/{2}).*)|)$'
         lines = text.split('\n')
@@ -82,7 +74,7 @@ class NamedPathTree(object):
     # props
 
     @property
-    def path(self):
+    def root(self) -> str:
         """
         Root path of tree
 
@@ -92,13 +84,13 @@ class NamedPathTree(object):
         """
         return self._root_path
 
-    def get_patterns(self):
+    def get_patterns(self) -> dict:
         return {name: path.options for name, path in self._scope.items()}
 
-    def get_context(self):
+    def get_context(self) -> dict:
         return self.default_context
 
-    def update_patterns(self, path_list):
+    def update_patterns(self, path_list: dict):
         """
         Update pattern list
 
@@ -117,7 +109,7 @@ class NamedPathTree(object):
                 to_remove.append(path_name)
                 continue
             # convert short path record to full options
-            if isinstance(options, string_types):
+            if isinstance(options, str):
                 options = dict(path=options)
             # check options type
             if not isinstance(options, dict):
@@ -145,12 +137,12 @@ class NamedPathTree(object):
             # check options
             if 'path' not in options and path_name not in self._scope:
                 raise ValueError('No "path" parameter in pattern options: {}'.format(path_name))
-            self._scope[path_name] = NamedPath(self.path, path_name, options, self._scope,
+            self._scope[path_name] = NamedPath(self.root, path_name, options, self._scope,
                                                default_context=self.default_context, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
 
-    def update_default_context(self, context):
+    def update_default_context(self, context: dict):
         """
         Update existing default context
 
@@ -162,7 +154,7 @@ class NamedPathTree(object):
 
     # get path
 
-    def get_path(self, name, context=None, skip_context_errors=False, create=False, **kwargs):
+    def get_path(self, name: str, context=None, skip_context_errors=False, create=False, **kwargs) -> str:
         """
         Get full path by name and context
 
@@ -186,7 +178,7 @@ class NamedPathTree(object):
             ctl.makedirs(context, skip_context_errors=skip_context_errors)
         return path
 
-    def get_path_variables(self, name):
+    def get_path_variables(self, name: str) -> list:
         """
         Get all variable names in pattern path
 
@@ -200,7 +192,7 @@ class NamedPathTree(object):
         """
         return self.get_path_instance(name).get_pattern_variables()
 
-    def get_raw_path(self, name):
+    def get_raw_path(self, name: str) -> str:
         """
         Raw path with unexpanded variables
 
@@ -214,7 +206,7 @@ class NamedPathTree(object):
         """
         return self.get_path_instance(name).get_relative()
 
-    def get_raw_pattern(self, name):
+    def get_raw_pattern(self, name) -> str:
         """
         Raw path with unexpanded variables and parent pattern
 
@@ -228,7 +220,7 @@ class NamedPathTree(object):
         """
         return self.get_path_instance(name).path
 
-    def get_path_instance(self, name):
+    def get_path_instance(self, name) -> 'NamedPath':
         """
         Get Path class instance by name
 
@@ -245,7 +237,7 @@ class NamedPathTree(object):
         except KeyError:
             raise PathNameError('Pattern named {} not found'.format(name.upper()))
 
-    def get_path_names(self):
+    def get_path_names(self) -> tuple:
         """
         List of all pattern names in current tree
 
@@ -253,8 +245,7 @@ class NamedPathTree(object):
         -------
         tuple
         """
-        # return tuple(sorted(self._scope.keys()))
-        return tuple(self._scope.keys())
+        return tuple(sorted(self._scope.keys()))
 
     def iter_patterns(self):
         """
@@ -263,7 +254,11 @@ class NamedPathTree(object):
         for name in self.get_path_names():
             yield self.get_path_instance(name)
 
-    def parse(self, path, with_context=False):
+    def iter_paths(self, context):
+        for pattern in self.iter_patterns():
+            yield pattern.solve(context)
+
+    def parse(self, path: str, with_context=False):
         """
         Reverse existing path to a pattern name
 
@@ -276,7 +271,6 @@ class NamedPathTree(object):
         -------
         str or list
         """
-        path = str(path).replace('/', os.path.sep).replace('\\', os.path.sep)
         match_names = []
         for name, path_instance in self._scope.items():  # type: NamedPath
             context = path_instance.parse(path)
@@ -313,15 +307,12 @@ class NamedPathTree(object):
 
     # check
 
-    def check_patterns(self, full_context):
+    def check_uniqueness_of_parsing(self, full_context: dict) -> dict:
         """
-        Checking your patterns for uniques and valid parsing.
+        Checking your patterns for uniques.
         Each path should be reversible without match with other patterns.
         This checking require full context with variables for all patterns.
         Use this method when you develop your structure.
-        Dont use two variables without separators! It cant be parsed unambiguously.
-            WRONG: {FILENAME}{EXT}
-            CORRECT: {FILENAME}.{EXT}
 
         Parameters
         ----------
@@ -340,11 +331,11 @@ class NamedPathTree(object):
             try:
                 parsed_name = self.parse(path)
             except NoPatternMatchError as e:
-                msg = 'Error "{}" {}: {}'.format(name, e.__class__.__name__, e)
+                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
                 logger.warning(msg)
                 result['errors'][name] = msg
             except MultiplePatternMatchError as e:
-                msg = 'Error "{}" {}: {}'.format(name, e.__class__.__name__, e)
+                msg = 'Error {}: {}'.format(e.__class__.__name__, e)
                 logger.warning(msg)
                 result['errors'][name] = msg
             else:
@@ -354,10 +345,6 @@ class NamedPathTree(object):
                     result['errors'][name] = msg
                 else:
                     result['success'].append(name)
-            # if '}{' in self.get_path_instance(name).get_relative():
-            #     msg = 'Unwanted kind of pattern ambiguous parsing'
-            #     logger.warning(msg)
-            #     result['errors'][name] = msg
         logger.info('Total patterns: %s' % len(self._scope))
         logger.info('Success parsing: %s' % len(result['success']))
         logger.info('Errors: %s' % len(result['errors']))
@@ -382,25 +369,76 @@ class NamedPathTree(object):
 
     # utils
 
-    def transfer_to(self, other_tree, names_map=None, move=False):
+    def transfer_to(self,
+                    other_tree: 'NamedPathTree',
+                    pattern_names_map: dict | Callable = None,
+                    context_keys_map: dict | Callable = None,
+                    context_values_map: dict | Callable = None,
+                    action: Callable = None) -> dict:
         """
-        Move files from one tree to other.
-        All names must be matched or have rename map.
+        Move files from one tree to others.
+        All names must be matched or have renamed map.
 
         Parameters
         ----------
         other_tree: NamedPathTree
             Target tree
-        names_map: dict
-            rename map
-        move: bool
-            Copy or move files
+        pattern_names_map: dict
+            rename map for pattern names
+        context_keys_map: dict
+            rename map for context keys
+        context_values_map: dict
+            replace context values
+        action: Callable
+            Action for paths. Must receive tho values. Default print()
 
         Returns
         -------
         dict
         """
-        raise NotImplementedError
+        def remap_pattern_name(name: str) -> str:
+            if pattern_names_map:
+                if callable(pattern_names_map):
+                    return pattern_names_map(name)
+                elif name in pattern_names_map:
+                    return pattern_names_map[name]
+            return name
+
+        def remap_context_name(name):
+            if context_keys_map:
+                if callable(context_keys_map):
+                    return context_keys_map(name)
+                elif name in context_keys_map:
+                    return context_keys_map[name]
+            return name
+
+        def replace_context_values(key, value):
+            if context_values_map:
+                if callable(context_values_map):
+                    return context_values_map(key, value)
+                elif key in context_values_map:
+                    return context_values_map[key]
+            return value
+
+        skipped_paths = []
+        path_pairs = []
+        for path in Path(self.root).rglob('*'):
+            try:
+                pat_name, context = self.parse(path.as_posix(), True)
+            except NoPatternMatchError as e:
+                logger.warning(f"{e}: {path}")
+                skipped_paths.append(path.as_posix())
+                continue
+            new_pat_name = remap_pattern_name(pat_name)
+            new_context = {remap_context_name(k): replace_context_values(k, v) for k, v in context.items()}
+            new_path = other_tree.get_path(new_pat_name, new_context)
+            if action:
+                action(path.as_posix(), new_path)
+            path_pairs.append(dict(old_path=path.as_posix(), new_path=new_path))
+        return dict(
+            remapped_paths=path_pairs,
+            skipped_paths=skipped_paths
+        )
 
     # I/O
 
@@ -412,6 +450,7 @@ class NamedPathTree(object):
             if root_path_name not in self.get_path_names():
                 raise PathNameError
             paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
+        context = context or self.get_context()
         for path_ctl in paths:
             path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
 
@@ -426,14 +465,13 @@ class NamedPathTree(object):
 
         """
         def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
-            # for elem in sorted(elements, key=lambda x: x['inst'].name):
             for elem in elements:
                 print(''.join(
                     [
                         placeholder*indent*2 if (not print_path and print_name) else '',
                         ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
                         placeholder*indent*2 if print_path else '',
-                        ('/'+elem['inst'].get_short().replace('\\', '/')) if print_path else '']))
+                        ('/'+elem['inst'].get_short()) if print_path else '']))
                 if elem['ch']:
                     _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
                           indent=indent+1, placeholder=placeholder)
@@ -447,7 +485,7 @@ class NamedPathTree(object):
                 tr[par.name]['ch'].append(item)
             else:
                 tr['']['ch'].append(item)
-        print('ROOT: {}'.format(self.path))
+        print('ROOT: {}'.format(self.root))
         print('='*50)
         column_width = max([len(x) for x in tr.keys()])
         _show(tr['']['ch'], max_name_width=column_width, **kwargs)
@@ -459,26 +497,15 @@ class NamedPath(object):
     _default_dir_permission = 0o755
     _default_file_permission = 0o644
 
-    def __init__(self, base_dir, name, options, scope, **kwargs):
+    def __init__(self, base_dir: str, name: str, options: dict, scope: dict, **kwargs):
         if 'path' not in options:
             raise ValueError('No parameter "path" in options: {}'.format(name))
         self.name = name
         self.options = options
         self._scope = scope
         self.kwargs = kwargs
-        self.base_dir = base_dir
-        self.default_context = lower_keys(kwargs.get('default_context', {}))
-        self.check_options()
-
-    def check_options(self):
-        if self.options:
-            for key, value in self.options.items():
-                if key == 'types':
-                    for name, tp in self.options['types'].items():
-                        try:
-                            eval(tp)
-                        except NameError:
-                            raise TypeError(f'Wrong type name for value {name}: {tp}')
+        self.base_dir = Path(base_dir)
+        self.default_context = kwargs.get('default_context', {})
 
     def __str__(self):
         return self.path
@@ -486,68 +513,46 @@ class NamedPath(object):
     def __repr__(self):
         return '<FSPath %s "%s">' % (self.name, self.path)
 
-    def get_context(self, context=None):
+    def get_context(self, context: dict = None) -> dict:
         """
         Collect context values
-
-        Parameters
-        ----------
-        context: dict
-
-        Returns
-        -------
-        dict
         """
         ctx = copy.deepcopy(self.default_context)
-        ctx.update(lower_keys(context))
+        ctx.update(context)
         for k, v in self.options.get('defaults', {}).items():
-            ctx.setdefault(k.lower(), v)
+            ctx.setdefault(k, v)
         ctx.setdefault('user', getpass.getuser())
-        return lower_keys(ctx)
+        return ctx
 
     @property
-    def path(self):
+    def path(self) -> str:
         """
         Raw path
-
-        Returns
-        -------
-        str
         """
         return self.options['path']
 
     @property
-    def default_dir_permission(self):
+    def default_dir_permission(self) -> int:
         return self.kwargs.get('default_dir_permission') or self._default_dir_permission
 
     @property
-    def default_file_permission(self):
+    def default_file_permission(self) -> int:
         return self.kwargs.get('default_file_permission') or self._default_dir_permission
 
     @property
-    def default_user(self):
+    def default_user(self) -> str:
         return getpass.getuser()
 
     @property
-    def default_group(self):
+    def default_group(self) -> str:
         return self.kwargs.get('default_group') or self.default_user
 
     # solve
 
-    def solve(self, context, skip_context_errors=False, relative=False, local=False, **kwargs):
+    def solve(self, context: dict, skip_context_errors: bool = False,
+              relative: bool = False, local: bool = False) -> str:
         """
         Resolve path from pattern with context to relative path
-
-        Parameters
-        ----------
-        context: dict
-        skip_context_errors: bool
-        relative: bool
-        local: bool
-
-        Returns
-        -------
-        str
         """
         if local:
             parent_path = ''
@@ -562,13 +567,13 @@ class NamedPath(object):
                     parent_path = self.base_dir
         parts = self.get_parts(context, solve=True, dirs_only=False, skip_context_errors=skip_context_errors)
         if parts:
-            rel_path = os.path.join(*parts)
+            rel_path = Path(*parts)
         else:
             rel_path = ''
-        return os.path.normpath(os.path.join(parent_path, rel_path))
+        return Path(parent_path, rel_path).as_posix()
 
-    def iter_path(self, context=None, solve=True, dirs_only=True,
-                  skip_context_errors=False, full_path=False, include_parents=False):
+    def iter_path(self, context: dict = None, solve: bool = True, dirs_only: bool = True,
+                  skip_context_errors: bool = False, full_path: bool = False, include_parents: bool = False):
         """
         Iterate path by parts
         """
@@ -591,33 +596,32 @@ class NamedPath(object):
                 base = self.base_dir
         p = ''
         for part in self.get_parts(context, solve, dirs_only, skip_context_errors):
-            p = os.path.join(p, part)
-            yield os.path.join(base, p)
+            p = Path(p, part)
+            yield Path(base, p).as_posix()
 
-    def get_parts(self, context=None, solve=False, dirs_only=False, skip_context_errors=False):
+    def get_parts(self, context: dict = None, solve: bool = False,
+                  dirs_only: bool = False, skip_context_errors: bool = False) -> list:
         context = self.get_context(context or {})
+        # context_variables = [x.upper() for x in context.keys()]
+        context_variables = list(context.keys())
         parts = []
-        for part in self.get_short().split(os.path.sep):
-            if dirs_only and os.path.splitext(part)[1]:
+        for part in Path(self.get_short()).parts:
+            if dirs_only and Path(part).suffix:
                 continue
             if solve:
-                part = self.solve_text_with_variables(part, context, skip_context_errors)
-            if part:
-                parts.append(part)
+                # variables = [val.split(':')[0].split('|')[0].upper() for val in re.findall(r"{(.*?)}", part)]
+                variables = self.get_pattern_variables(part)
+                miss = [x for x in variables if x not in context_variables]
+                if miss:
+                    if skip_context_errors:
+                        break
+                    else:
+                        raise PathContextError(str(miss))
+                part = self.expand_variables(part, context)
+            parts.append(part)
         return parts
 
-    def solve_text_with_variables(self, text, context, skip_context_errors=False):
-        context_variables = [x.upper() for x in context.keys()]
-        variables = self.get_pattern_variables(text)
-        miss = [x for x in variables if x not in context_variables]
-        if miss:
-            if skip_context_errors:
-                return
-            else:
-                raise PathContextError(str(miss))
-        return self.expand_variables(text, context, skip_context_errors)
-
-    def expand_variables(self, text, context, skip_context_errors=False):
+    def expand_variables(self, text: str, context: dict) -> str:
         """
         Resolve variables in pattern
 
@@ -625,69 +629,29 @@ class NamedPath(object):
         ----------
         text: str
         context: dict
-        skip_context_errors: bool
 
         Returns
         -------
         str
         """
         ctx = self.get_context(context or {})
-        for key, value in ctx.items():
-            if isinstance(value, str) and value != text:
-                if re.search(r'{[\w\d_]+}', value):
-                    ctx[key] = self.solve_text_with_variables(value, ctx, skip_context_errors)
-        return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()}, _options=self.options)
+        return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
 
-    def convert_types(self, context):
+    def convert_types(self, context: dict) -> dict:
         """
         Convert context types after parsing
         """
+        import builtins
         types = self.options.get('types')
         if not types:
             return context
-        if not set(map(str.lower, types)).intersection(set(context)):
-            return context
-        for name in types:
-            value = context.get(name.lower())
-            if value is None:
-                continue
-            obj_type = self.get_value_type(name)
-            try:
-                context[name.lower()] = obj_type(value)
-            except Exception as e:
-                logger.exception(f'{self.name}: Wrong value for type {obj_type}: {repr(value)}')
-                raise
+        for name, tp in types.items():
+            if name in context:
+                func = getattr(builtins, tp)
+                context[name] = func(context[name])
         return context
 
-    def get_value_type(self, name):
-        """
-        Convert type name to object
-        Allowed values:
-            int
-            float
-            my_module.myClass
-            ...
-        Default value:
-            str
-
-        Parameters
-        ----------
-        name: str
-
-        Returns
-        -------
-        object
-        """
-        import pydoc
-        type_name = self.options.get('types', {}).get(name.upper(), 'str')
-        if '.' in type_name:
-            obj = pydoc.locate(type_name)
-            if not type_name:
-                raise TypeError(f'Type {type_name} for value {name} not found')
-            return obj
-        return eval(type_name)
-
-    def get_pattern_variables(self, pattern=None):
+    def get_pattern_variables(self, pattern: str = None) -> list:
         """
         Extract variables names from pattern
 
@@ -698,11 +662,11 @@ class NamedPath(object):
         variables = []
         for val in re.findall(r"{(.*?)}", pattern or self.get_relative()):
             variables.append(val.split(':')[0].split('|')[0])
-        return sorted(list(set(variables)))
+        return list(sorted(list(set(variables))))
 
     # paths
 
-    def get_relative(self):
+    def get_relative(self) -> str:
         """
         Relative to base dir
 
@@ -712,14 +676,11 @@ class NamedPath(object):
         """
         par = self.get_parent()
         if par:
-            return normpath(join(
-                par.get_relative(),
-                self.get_short())
-            )
+            return str(Path(par.get_relative(), self.get_short()))
         else:
             return self.path
 
-    def get_short(self):
+    def get_short(self) -> str:
         """
         Relative to parent
 
@@ -727,29 +688,25 @@ class NamedPath(object):
         -------
         str
         """
-        return normpath(self.path.split(']', 1)[-1].lstrip('\\/'))
+        return Path(self.path.split(']', 1)[-1].lstrip('\\/')).as_posix()
 
-    def get_absolute(self):
+    def get_absolute(self) -> str:
         """
         Absolute path
         """
-        return os.path.normpath(os.path.join(self.base_dir, self.get_relative()))
+        return str(Path(self.base_dir, self.get_relative()))
 
     # parent
 
-    def get_parent_name(self):
+    def get_parent_name(self) -> str:
         """
         Get name of parent pattern
-
-        Returns
-        -------
-        str
         """
         match = re.search(r"^\[(\w+)]/?(.*)", self.path)
         if match:
             return match.group(1)
 
-    def get_parent(self):
+    def get_parent(self) -> str:
         """
         Get controller of parent pattern
 
@@ -764,13 +721,9 @@ class NamedPath(object):
             except KeyError:
                 raise PathNameError('No path named {}'.format(parent_name))
 
-    def get_all_parent_names(self):
+    def get_all_parent_names(self) -> list:
         """
         Get list of all parent patterns
-
-        Returns
-        -------
-        list
         """
         names = []
         p = self
@@ -783,19 +736,9 @@ class NamedPath(object):
         names.reverse()
         return names
 
-    def get_children(self, recursive=False):
-        names = []
-        for child in self._scope.values():
-            if child.get_parent_name() == self.name:
-                names.append(child)
-        if names and recursive:
-            for child in names:
-                names.extend(child.get_children())
-        return names
-
     # patterns
 
-    def as_glob(self, prefix=None, context=None):
+    def as_glob(self, prefix: str = None, context: dict = None):
         """
         Convert pattern to glob-pattern
 
@@ -811,7 +754,7 @@ class NamedPath(object):
         """
         path = self.get_relative()
         if prefix:
-            path = normpath(join(prefix, path.lstrip('\\/')))
+            path = Path(prefix, path.lstrip('\\/'))
 
         def get_context_val(match):
             val = match.group(0)
@@ -824,7 +767,7 @@ class NamedPath(object):
 
         return re.sub(r"{.*?}", get_context_val, path)
 
-    def as_regex(self, prefix=None, named_values=True, context=None):
+    def as_regex(self, prefix: str = None, named_values: bool = True, context: dict = None) -> str:
         """
         Convert pattern to regex
 
@@ -842,28 +785,14 @@ class NamedPath(object):
         """
         simple_pattern = r'[^/\\]+'
         named_pattern = r'(?P<%s>[^/\\]+)'
-        number_pattern = r'[\d]+'
-        named_number_pattern = r'(?P<%s>[\d]+)'
         path = self.get_relative()
         if prefix:
             path = normpath(join(prefix, path.lstrip('\\/')))
         names = set()
 
-        def is_digit(name):
-            return self.get_value_type(name) is int
-
-        def get_prefix(name):
-            return self.options.get('prefix', {}).get(name.upper())
-
-        def get_suffix(name):
-            return self.options.get('suffix', {}).get(name.upper())
-
-        def get_default(name):
-            return self.options.get('defaults', {}).get(name.upper())
-
         def get_subpattern(match):
             v = match.group(0)
-            name = v.strip('{}').split(':')[0].split('|')[0].lower()
+            name = v.strip('{}').split(':')[0].split('|')[0]#.lower()
             if context:
                 try:
                     expanded = self.expand_variables(v, context)
@@ -872,57 +801,29 @@ class NamedPath(object):
                 except KeyError:
                     pass
             if name in names:
-                pat = number_pattern if is_digit(name) else simple_pattern
+                return simple_pattern
+            names.add(name)
+            if named_values:
+                return named_pattern % name
             else:
-                names.add(name)
-                if named_values:
-                    pat = (named_number_pattern % name) if is_digit(name) else (named_pattern % name)
-                else:
-                    pat = number_pattern if is_digit(name) else simple_pattern
-            # prefix
-            pfx_pattern = ''
-            pfx = get_prefix(name)
-            if pfx:
-                if get_default(name) is None:
-                    pfx_pattern = f'({pfx})'
-                else:
-                    pfx_pattern = f'({pfx})?'
-            # suffix
-            sfx_pattern = ''
-            sfx = get_suffix(name)
-            if sfx:
-                if get_default(name) is None:
-                    sfx_pattern = f'({sfx})'
-                else:
-                    sfx_pattern = f'({sfx})?'
-            if pfx_pattern:
-                logger.debug(f'add prefix for {name}: {pfx_pattern}')
-                pat = pfx_pattern+pat
-            if sfx_pattern:
-                logger.debug(f'add suffix for {name}: {sfx_pattern}')
-                pat = pat + sfx_pattern
-            return pat
+                return simple_pattern
 
         pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
         pattern = pattern.replace('.', '\\.')
-        pattern = f'^{pattern}$'
+        pattern = '^%s$' % pattern
         return pattern
 
-    def parse(self, path):
+    def parse(self, path: str) -> dict:
         """
         Extract context from path
-
-        Returns
-        -------
-        dict
         """
-        pattern = self.as_regex(self.base_dir)
-        m = re.match(pattern, path, re.IGNORECASE)
+        pattern = self.as_regex(self.base_dir.as_posix())
+        m = re.match(pattern, str(path), re.IGNORECASE)
         if m:
             context = self.convert_types(m.groupdict())
-            return context
+            return {k.upper(): v for k, v in context.items()}
 
-    def get_permission_list(self, **kwargs):
+    def get_permission_list(self, **kwargs) -> list:
         """chmod parameter"""
         mode_list = self._get_list(self.options.get('perm'))
         mode_list = [self._valid_mode(x) for x in mode_list]
@@ -931,15 +832,15 @@ class NamedPath(object):
                 mode_list[i] = kwargs.get('default_permission') or self.default_dir_permission
         return mode_list
 
-    def get_group_list(self, default_group=None, **kwargs):
+    def get_group_list(self, default_group: str = None, **kwargs) -> list:
         return self._get_option_list_by_value_name('groups', 'default_group', default_group, **kwargs)
 
-    def get_user_list(self, default_user=None, **kwargs):
+    def get_user_list(self, default_user=None, **kwargs) -> list:
         return self._get_option_list_by_value_name('users', 'default_user', default_user, **kwargs)
 
     # I/O
 
-    def makedirs(self, context, skip_context_errors=False, recursive=False, **kwargs):
+    def makedirs(self, context, skip_context_errors=False, **kwargs):
         parent = self.get_parent()
         if parent:
             try:
@@ -988,12 +889,6 @@ class NamedPath(object):
                 if real_path != link_source:
                     raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
                         path, real_path, link_source))
-        if recursive:
-            for child in self.get_children(recursive=True):
-                child.makedirs(
-                    context=context,
-                    skip_context_errors=skip_context_errors
-                )
         return True
 
     def remove_empty_dirs(self, context):
@@ -1039,7 +934,7 @@ class NamedPath(object):
 
     # utils
 
-    def _get_option_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs):
+    def _get_option_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs) -> list:
         default_value = default_value or (self.kwargs.get(default_value_key) if default_value_key else None)
         list_length = len(self.get_parts())
         value_list = self._get_list(self.options.get(value))
@@ -1062,7 +957,7 @@ class NamedPath(object):
             return oct(value)
         if isinstance(value, bytes):
             value = value.decode()
-        if isinstance(value, string_types):
+        if isinstance(value, str):
             if value.isdigit():
                 # '0755'
                 return oct(int('0o%s' % value, 8))
@@ -1072,7 +967,7 @@ class NamedPath(object):
         raise ValueError('Wrong mode: {} ({})'.format(value, type(value)))
 
 
-def chown(path, user, group):
+def chown(path: str, user: str, group: str):
     if os.name == 'nt':
         raise OSError('Not implemented for Windows OS')
     # TODO: implement for windows
@@ -1085,11 +980,11 @@ def chown(path, user, group):
         raise type(e)("%s %s:%s (%s:%s)" % (e, user, group, uid, gid))
 
 
-def chmod(path, mode):
+def chmod(path: str, mode: str):
     if os.name == 'nt':
         raise OSError('Not implemented for Windows OS')
     # TODO: implement for windows
-    if isinstance(mode, string_types):
+    if isinstance(mode, str):
         mode = int(mode, 8)
     try:
         os.chmod(path, mode)
@@ -1097,8 +992,8 @@ def chmod(path, mode):
         raise type(e)("%s %s" % (e, mode))
 
 
-def lower_keys(dct):
-    return {k.lower(): v for k, v in dct.items()}
+# def lower_keys(dct: dict) -> dict:
+    # return {k.lower(): v for k, v in dct.items()}
 
 
 class CustomFormatString(str):
@@ -1121,22 +1016,15 @@ class CustomFormatString(str):
     sep = '|'
 
     def format(self, *args, **kwargs):
-        options = kwargs.get('_options', {})
         context = copy.deepcopy(kwargs)
         variables = re.findall(r"({([\w\d_:]+)([%s\w]+\(.*?\))?})" % self.sep, self)
         for full_pat, var, expr in variables:
             var_name = var.split(':')[0].split(self.sep)[0]
-            prefix = options.get('prefix', {}).get(var_name, '')
-            suffix = options.get('suffix', {}).get(var_name, '')
             if context.get(var_name) == '*':
-                self = CustomFormatString(str.replace(self, full_pat, prefix+'*'+suffix))
-            elif context.get(var_name) in ("", None):
-                self = CustomFormatString(str.replace(self, full_pat, ''))
-            if prefix:
-                self = CustomFormatString(str.replace(self, full_pat, prefix+full_pat+suffix))
+                self = CustomFormatString(str.replace(self, full_pat, '*'))
             if self.sep in expr:
                 methods = expr.split(self.sep)
-                _self = CustomFormatString(str.replace(self, full_pat, '{%s}{%s}{%s}' % (prefix, var,suffix)))
+                _self = CustomFormatString(str.replace(self, full_pat, '{%s}' % var))
                 val = context.get(var.split(':')[0])
                 if not val:
                     raise ValueError('No value {} in {}'.format(var, context.keys()))
@@ -1146,7 +1034,6 @@ class CustomFormatString(str):
                     if not m:
                         continue
                     expression_to_eval = 'val.%s' % m
-                    # print(expression_to_eval)
                     val = eval(expression_to_eval)
                 context[var] = val
                 self = _self

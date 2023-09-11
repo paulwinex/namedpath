@@ -1,6 +1,16 @@
+[tool.poetry]
+name = "namedpath"
+version = "0.1.2"
+description = "File management tool with named file patterns"
+authors = ["paulwinex <paulwinex@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.2"
+
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
