@@ -28,11 +28,10 @@ class NamedPathTree:
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path: str, path_list: list = None, default_context: dict = None, **kwargs):
+    def __init__(self, root_path: str, path_list: dict = None, default_context: dict = None, **kwargs):
         self.kwargs = kwargs
         if not isinstance(root_path, str):
             raise ValueError('Root directory must be string type')
-        # self._root_path = abspath(expandvars(expanduser(root_path)))
         self._root_path = Path(root_path).resolve().as_posix()
         self._scope = {}
         self.default_context = {}
@@ -41,21 +40,21 @@ class NamedPathTree:
         if path_list:
             self.update_patterns(path_list)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.path
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<NamedPathTree "{}">'.format(self.path)
 
     @classmethod
-    def load_from_files(cls, root, files):
+    def load_from_files(cls, root: str, files: list):
         patterns = {}
         for f in files:
             patterns.update(cls._load_commented_json(f))
         return cls(root, patterns)
 
     @staticmethod
-    def _load_commented_json(path, **kwargs):
+    def _load_commented_json(path: str, **kwargs) -> dict:
         text = Path(path).read_text()
         regex = r'\s*(/{2}).*$'
         regex_inline = r'(:?(?:\s)*([A-Za-z\d.{}]*)|((?<=\").*\"),?)(?:\s)*(((/{2}).*)|)$'
@@ -73,7 +72,7 @@ class NamedPathTree:
     # props
 
     @property
-    def path(self):
+    def path(self) -> str:
         """
         Root path of tree
 
@@ -83,13 +82,13 @@ class NamedPathTree:
         """
         return self._root_path
 
-    def get_patterns(self):
+    def get_patterns(self) -> dict:
         return {name: path.options for name, path in self._scope.items()}
 
-    def get_context(self):
+    def get_context(self) -> dict:
         return self.default_context
 
-    def update_patterns(self, path_list):
+    def update_patterns(self, path_list: dict):
         """
         Update pattern list
 
@@ -153,7 +152,7 @@ class NamedPathTree:
 
     # get path
 
-    def get_path(self, name, context=None, skip_context_errors=False, create=False, **kwargs):
+    def get_path(self, name: str, context=None, skip_context_errors=False, create=False, **kwargs) -> str:
         """
         Get full path by name and context
 
@@ -175,9 +174,9 @@ class NamedPathTree:
         path = ctl.solve(context, skip_context_errors=skip_context_errors, **kwargs)
         if create and not exists(path):
             ctl.makedirs(context, skip_context_errors=skip_context_errors)
-        return path
+        return path.as_posix()
 
-    def get_path_variables(self, name):
+    def get_path_variables(self, name: str) -> list:
         """
         Get all variable names in pattern path
 
@@ -191,7 +190,7 @@ class NamedPathTree:
         """
         return self.get_path_instance(name).get_pattern_variables()
 
-    def get_raw_path(self, name):
+    def get_raw_path(self, name: str) -> str:
         """
         Raw path with unexpanded variables
 
@@ -205,7 +204,7 @@ class NamedPathTree:
         """
         return self.get_path_instance(name).get_relative()
 
-    def get_raw_pattern(self, name):
+    def get_raw_pattern(self, name) -> str:
         """
         Raw path with unexpanded variables and parent pattern
 
@@ -219,7 +218,7 @@ class NamedPathTree:
         """
         return self.get_path_instance(name).path
 
-    def get_path_instance(self, name):
+    def get_path_instance(self, name) -> 'NamedPath':
         """
         Get Path class instance by name
 
@@ -236,7 +235,7 @@ class NamedPathTree:
         except KeyError:
             raise PathNameError('Pattern named {} not found'.format(name.upper()))
 
-    def get_path_names(self):
+    def get_path_names(self) -> tuple:
         """
         List of all pattern names in current tree
 
@@ -244,8 +243,7 @@ class NamedPathTree:
         -------
         tuple
         """
-        # return tuple(sorted(self._scope.keys()))
-        return tuple(self._scope.keys())
+        return tuple(sorted(self._scope.keys()))
 
     def iter_patterns(self):
         """
@@ -254,7 +252,7 @@ class NamedPathTree:
         for name in self.get_path_names():
             yield self.get_path_instance(name)
 
-    def parse(self, path, with_context=False):
+    def parse(self, path: str, with_context=False):
         """
         Reverse existing path to a pattern name
 
@@ -303,7 +301,7 @@ class NamedPathTree:
 
     # check
 
-    def check_uniqueness_of_parsing(self, full_context):
+    def check_uniqueness_of_parsing(self, full_context: dict) -> dict:
         """
         Checking your patterns for uniques.
         Each path should be reversible without match with other patterns.
@@ -367,8 +365,8 @@ class NamedPathTree:
 
     def transfer_to(self, other_tree, names_map=None, move=False):
         """
-        Move files from one tree to other.
-        All names must be matched or have rename map.
+        Move files from one tree to others.
+        All names must be matched or have renamed map.
 
         Parameters
         ----------
@@ -409,7 +407,6 @@ class NamedPathTree:
 
         """
         def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
-            # for elem in sorted(elements, key=lambda x: x['inst'].name):
             for elem in elements:
                 print(''.join(
                     [
@@ -458,7 +455,7 @@ class NamedPath(object):
     def __repr__(self):
         return '<FSPath %s "%s">' % (self.name, self.path)
 
-    def get_context(self, context: dict =None) -> dict:
+    def get_context(self, context: dict = None) -> dict:
         """
         Collect context values
         """
@@ -495,7 +492,7 @@ class NamedPath(object):
     # solve
 
     def solve(self, context: dict, skip_context_errors: bool = False,
-              relative: bool = False, local: bool = False) -> str:
+              relative: bool = False, local: bool = False) -> Path:
         """
         Resolve path from pattern with context to relative path
         """
@@ -542,14 +539,14 @@ class NamedPath(object):
         p = ''
         for part in self.get_parts(context, solve, dirs_only, skip_context_errors):
             p = Path(p, part)
-            yield Path(base, p)
+            yield Path(base, p).as_posix()
 
     def get_parts(self, context: dict = None, solve: bool = False,
                   dirs_only: bool = False, skip_context_errors: bool = False) -> list:
         context = self.get_context(context or {})
         context_variables = [x.upper() for x in context.keys()]
         parts = []
-        for part in self.get_short().parts:
+        for part in Path(self.get_short()).parts:
             if dirs_only and Path(part).suffix:
                 continue
             if solve:
@@ -594,7 +591,7 @@ class NamedPath(object):
                 context[name.lower()] = eval(expr)
         return context
 
-    def get_pattern_variables(self, pattern: str=None) -> list:
+    def get_pattern_variables(self, pattern: str = None) -> list:
         """
         Extract variables names from pattern
 
@@ -631,7 +628,7 @@ class NamedPath(object):
         -------
         str
         """
-        return str(Path(self.path.split(']', 1)[-1].lstrip('\\/')))
+        return Path(self.path.split(']', 1)[-1].lstrip('\\/')).as_posix()
 
     def get_absolute(self) -> str:
         """
@@ -760,8 +757,8 @@ class NamedPath(object):
         """
         Extract context from path
         """
-        pattern = self.as_regex(self.base_dir)
-        m = re.match(pattern, path, re.IGNORECASE)
+        pattern = self.as_regex(self.base_dir.as_posix())
+        m = re.match(pattern, str(path), re.IGNORECASE)
         if m:
             context = self.convert_types(m.groupdict())
             return context

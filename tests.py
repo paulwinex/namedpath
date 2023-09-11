@@ -10,17 +10,17 @@ ROOT = os.path.join(tempfile.gettempdir(), 'my_struct')
 def patterns():
     return dict(
         PROJECT='{PROJECT_NAME}',
-        SHOTS='[PROJECT]/shot',
-        SHOT='[SHOTS]/{ENTITY_NAME}',
-        SHOT_PUBLISH={
-            'path': '[SHOT]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}.{EXT}',
-            "groups": [None, 'work', None],
-            "users": ["user1", None, "root"],
-            "types": {"VERSION": "int"}
-        },
-        ASSETS='[PROJECT]/assets',
-        ASSET={'path': '[ASSETS]/{ENTITY_NAME}', 'preset': 'USER_DIR'},
-        ASSET_MODELS='[ASSET]/models',
+            SHOTS='[PROJECT]/shot',
+                SHOT='[SHOTS]/{ENTITY_NAME}',
+                    SHOT_PUBLISH={
+                        'path': '[SHOT]/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}.{EXT}',
+                        "groups": [None, 'work', None],
+                        "users": ["user1", None, "root"],
+                        "types": {"VERSION": "int"}
+                    },
+            ASSETS='[PROJECT]/assets',
+                ASSET={'path': '[ASSETS]/{ENTITY_NAME}', 'preset': 'USER_DIR'},
+                    ASSET_MODELS='[ASSET]/models',
         option_presets={
             "USER_DIR": {"perm": "755", "user": "test"}
         }
