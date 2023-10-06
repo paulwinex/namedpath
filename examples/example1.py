@@ -85,7 +85,8 @@ context = dict(
     frame=225
 )
 
-tree = NamedPathTree(root_path='d:/projects', path_list=path_list, default_group='paul')
+tree = NamedPathTree(root_path='/mnt/projects', path_list=path_list, default_group='paul')
+
 tree.check_uniqueness_of_parsing(context)
 # {'errors': {}, 'success': ['SHOT_FX', 'SHOT_COMP', 'ASSET_TEXTURES'...
 tree.get_path_names()
@@ -100,3 +101,41 @@ tree.parse(path2)
 tree.parse(path2, with_variables=True)
 # ('SHOT_RENDER_PUBLISH', {'project_name': 'example', 'entity_name': '03s001_0010',
 # 'sequence': '03s001', 'frame': '00225', 'ext': 'exr', 'version': '005'})
+
+tree.show_tree()
+'''
+ROOT: /mnt/projects
+==================================================
+                       PROJECT|/{PROJECT_NAME}
+                        ASSETS|--/assets
+                         ASSET|----/{ENTITY_NAME}
+               ASSET_ANIMATION|------/animation
+                     ASSET_LIB|------/lib
+                   ASSET_MODEL|------/models
+                    ASSET_REFS|------/ref
+                  ASSET_RENDER|------/render
+                    ASSET_RIGS|------/rigs
+                    ASSET_TEMP|------/temp
+                ASSET_TEXTURES|------/textures
+         ASSET_TEXTURE_PUBLISH|--------/{VARIANT}/v{VERSION}/{FILENAME}.{EXT}
+                        CONFIG|--/.config
+                         SHOTS|--/shots
+                      SEQUENCE|----/{SEQUENCE}
+                          SHOT|------/{ENTITY_NAME}
+                SHOT_ANIMATION|--------/animation
+  SHOT_ANIMATION_PUBLISH_CACHE|----------/publish/cache/v{VERSION:03d}/{SEQUENCE}_{ENTITY_NAME}_cache.{EXT}
+  SHOT_ANIMATION_PUBLISH_SCENE|----------/publish/scenes/v{VERSION:03d}/{SEQUENCE}_{ENTITY_NAME}_anim.{EXT}
+                   SHOT_CAMERA|--------/camera
+                     SHOT_COMP|--------/comp
+                       SHOT_FX|--------/fx
+                      SHOT_LIB|--------/lib
+                    SHOT_LIGHT|--------/light
+                   SHOT_PLATES|--------/plates
+                     SHOT_REFS|--------/refs
+                   SHOT_RENDER|--------/render
+           SHOT_RENDER_PUBLISH|----------/publish/v{VERSION:03d}/{ENTITY_NAME}_v{VERSION:03d}_{FRAME:05d}.{EXT}
+              SHOT_RENDER_TEMP|----------/temp/{ENTITY_NAME}/{FILENAME}.{EXT}
+                    SHOT_SOUND|--------/sound
+                     SHOT_TEMP|--------/temp
+==================================================
+'''
