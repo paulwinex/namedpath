@@ -30,9 +30,9 @@ class NamedPathTree:
     Class provide you to control folder structure paths
     """
 
-    def __init__(self, root_path: str, path_list: dict = None, default_context: dict = None, **kwargs):
+    def __init__(self, root_path: str or Path, path_list: dict = None, default_context: dict = None, **kwargs):
         self.kwargs = kwargs
-        if not isinstance(root_path, str):
+        if not isinstance(root_path, (str, Path)):
             raise ValueError('Root directory must be string type')
         self._root_path = Path(root_path).resolve().as_posix()
         self._scope = {}
@@ -49,11 +49,11 @@ class NamedPathTree:
         return '<NamedPathTree "{}">'.format(self.root)
 
     @classmethod
-    def load_from_files(cls, root: str, files: list):
+    def load_from_files(cls, root: str or Path, files: list, **kwargs):
         patterns = {}
         for f in files:
             patterns.update(cls._load_commented_json(f))
-        return cls(root, patterns)
+        return cls(root, patterns, **kwargs)
 
     @staticmethod
     def _load_commented_json(path: str, **kwargs) -> dict:
