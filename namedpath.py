@@ -524,41 +524,6 @@ class NamedPath(object):
         ctx.setdefault('user', getpass.getuser())
         return ctx
 
-    def _expand_attrs(self, text: str, context: dict) -> tuple[str, dict]:
-        new_context = {}
-        new_text = text
-        variables = re.findall(r'{(.*?)}', text)
-
-        def get_next_value(obj, name):
-            if hasattr(obj, name):
-                val = getattr(obj, name)
-                if callable(val):
-                    return val()
-                return val
-            elif isinstance(obj, dict) and name in obj:
-                val = obj[name]
-                if callable(val):
-                    return val()
-                return val
-
-        for var in variables:
-            if ':' in var:
-                var = var.split(':')[0]
-            if '.' in var:
-                variables = var.split('.')
-                name = variables.pop(0)
-                obj = context[name]
-                while variables:
-                    name = variables.pop(0)
-                    obj = get_next_value(obj, name)
-                new_var = var.replace('.', '_')
-                new_context[new_var] = obj
-            else:
-                new_var = var
-                new_context[new_var] = context[var]
-            new_text = new_text.replace('{' + var + '}', '{' + new_var + '}')
-        return new_text, new_context
-
     @property
     def path(self) -> str:
         """
@@ -637,10 +602,10 @@ class NamedPath(object):
     def get_parts(self, context: dict = None, solve: bool = False,
                   dirs_only: bool = False, skip_context_errors: bool = False) -> list:
         context = self.get_context(context or {})
-        # context_variables = list(context.keys())
-        _, context_variables = self._expand_attrs(self.path, context)
+        src_path = NamedPath.remove_optional(self.path, context)
+        _, context_variables = self.expand_attrs(src_path, context)
         parts = []
-        for part in Path(self.get_short()).parts:
+        for part in Path(self.get_short(src_path)).parts:
             if dirs_only and Path(part).suffix:
                 continue
             if solve:
@@ -669,9 +634,54 @@ class NamedPath(object):
         str
         """
         ctx = self.get_context(context or {})
-        # return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
-        text, ctx = self._expand_attrs(text, ctx)
+        text = self.remove_optional(text, ctx)
+        text, ctx = self.expand_attrs(text, ctx)
         return CustomFormatString(text).format(**ctx)
+
+    @classmethod
+    def expand_attrs(cls, text: str, context: dict) -> tuple[str, dict]:
+        new_context = {}
+        new_text = text
+        variables = re.findall(r'{(.*?)}', text)
+
+        def get_next_value(obj, name):
+            if hasattr(obj, name):
+                val = getattr(obj, name)
+                if callable(val):
+                    return val()
+                return val
+            elif isinstance(obj, dict) and name in obj:
+                val = obj[name]
+                if callable(val):
+                    return val()
+                return val
+
+        for var in variables:
+            if ':' in var:
+                var = var.split(':')[0]
+            if '.' in var:
+                variables = var.split('.')
+                name = variables.pop(0)
+                obj = context[name]
+                while variables:
+                    name = variables.pop(0)
+                    obj = get_next_value(obj, name)
+                new_var = var.replace('.', '_')
+                new_context[new_var] = obj
+            else:
+                new_var = var
+                new_context[new_var] = context[var]
+            new_text = new_text.replace('{' + var + '}', '{' + new_var + '}')
+        return new_text, new_context
+
+    @classmethod
+    def remove_optional(cls, text: str, context: dict):
+        pat = re.compile(r"<.*?\{([\w\d:]+)}>")
+        for var in pat.finditer(text):
+            if var.group(1).split(':')[0].split('.')[0] not in context:
+                text = text.replace(var.group(0), '')
+            text = text.replace(var.group(0), var.group(0).strip('<>'))
+        return text
 
     def convert_types(self, context: dict) -> dict:
         """
@@ -716,7 +726,7 @@ class NamedPath(object):
         else:
             return self.path
 
-    def get_short(self) -> str:
+    def get_short(self, custom_path = None) -> str:
         """
         Relative to parent
 
@@ -724,7 +734,7 @@ class NamedPath(object):
         -------
         str
         """
-        return Path(self.path.split(']', 1)[-1].lstrip('\\/')).as_posix()
+        return Path((custom_path or self.path).split(']', 1)[-1].lstrip('\\/')).as_posix()
 
     def get_absolute(self) -> str:
         """
