@@ -524,6 +524,41 @@ class NamedPath(object):
         ctx.setdefault('user', getpass.getuser())
         return ctx
 
+    def _expand_attrs(self, text: str, context: dict) -> tuple[str, dict]:
+        new_context = {}
+        new_text = text
+        variables = re.findall(r'{(.*?)}', text)
+
+        def get_next_value(obj, name):
+            if hasattr(obj, name):
+                val = getattr(obj, name)
+                if callable(val):
+                    return val()
+                return val
+            elif isinstance(obj, dict) and name in obj:
+                val = obj[name]
+                if callable(val):
+                    return val()
+                return val
+
+        for var in variables:
+            if ':' in var:
+                var = var.split(':')[0]
+            if '.' in var:
+                variables = var.split('.')
+                name = variables.pop(0)
+                obj = context[name]
+                while variables:
+                    name = variables.pop(0)
+                    obj = get_next_value(obj, name)
+                new_var = var.replace('.', '_')
+                new_context[new_var] = obj
+            else:
+                new_var = var
+                new_context[new_var] = context[var]
+            new_text = new_text.replace('{' + var + '}', '{' + new_var + '}')
+        return new_text, new_context
+
     @property
     def path(self) -> str:
         """
@@ -602,14 +637,13 @@ class NamedPath(object):
     def get_parts(self, context: dict = None, solve: bool = False,
                   dirs_only: bool = False, skip_context_errors: bool = False) -> list:
         context = self.get_context(context or {})
-        # context_variables = [x.upper() for x in context.keys()]
-        context_variables = list(context.keys())
+        # context_variables = list(context.keys())
+        _, context_variables = self._expand_attrs(self.path, context)
         parts = []
         for part in Path(self.get_short()).parts:
             if dirs_only and Path(part).suffix:
                 continue
             if solve:
-                # variables = [val.split(':')[0].split('|')[0].upper() for val in re.findall(r"{(.*?)}", part)]
                 variables = self.get_pattern_variables(part)
                 miss = [x for x in variables if x not in context_variables]
                 if miss:
@@ -635,7 +669,9 @@ class NamedPath(object):
         str
         """
         ctx = self.get_context(context or {})
-        return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
+        # return CustomFormatString(text).format(**{k.upper(): v for k, v in ctx.items()})
+        text, ctx = self._expand_attrs(text, ctx)
+        return CustomFormatString(text).format(**ctx)
 
     def convert_types(self, context: dict) -> dict:
         """
@@ -662,7 +698,7 @@ class NamedPath(object):
         variables = []
         for val in re.findall(r"{(.*?)}", pattern or self.get_relative()):
             variables.append(val.split(':')[0].split('|')[0])
-        return list(sorted(list(set(variables))))
+        return list(sorted(list(set([x.replace('.', '_') for x in variables]))))
 
     # paths
 
