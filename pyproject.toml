@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "namedpath"
-version = "0.1.2"
+version = "0.2.0"
 description = "File management tool with named file patterns"
 authors = ["paulwinex <paulwinex@gmail.com>"]
 readme = "README.md"
