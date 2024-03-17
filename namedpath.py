@@ -412,7 +412,7 @@ class NamedPath(object):
             return {k.upper(): v for k, v in context.items()}
 
 
-class NamedPathDrive(NamedPath):
+class NamedPathDrive(NamedPath):    # TODO: Work in progress! dont use this class
     """
     named path class with dick drive access
     """
@@ -925,6 +925,63 @@ class NamedPathTree:
 
     # utils
 
+    def show_tree(self, **kwargs):
+        """
+        Print tree structure to console
+
+        PATTERN_NAME| path
+
+        """
+        def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
+            for elem in elements:
+                print(''.join(
+                    [
+                        placeholder*indent*2 if (not print_path and print_name) else '',
+                        ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
+                        placeholder*indent*2 if print_path else '',
+                        ('/'+elem['inst'].get_short()) if print_path else '']))
+                if elem['ch']:
+                    _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
+                          indent=indent+1, placeholder=placeholder)
+        tr = {x.name: {'inst': x, 'ch': []} for x in self.iter_patterns() if x.name}
+        tr[''] = {'inst': None, 'ch': []}
+        for name, item in tr.items():
+            if not item['inst']:
+                continue
+            par = item['inst'].get_parent()
+            if par:
+                tr[par.name]['ch'].append(item)
+            else:
+                tr['']['ch'].append(item)
+        print('ROOT: {}'.format(self.root))
+        print('='*50)
+        column_width = max([len(x) for x in tr.keys()])
+        _show(tr['']['ch'], max_name_width=column_width, **kwargs)
+        print('=' * 50)
+
+
+class NamedPathTreeDrive(NamedPathTree):    # TODO: Work in progress! dont use this class
+    """
+    Named path tree with access to drive
+    """
+
+    path_class = NamedPathDrive
+
+    def makedirs(self, context=None, names=None, root_path_name=None, skip_context_errors=True, **kwargs):
+        """Create dirs"""
+        names = names or self.get_path_names()
+        paths = [self.get_path_instance(name) for name in names]
+        if root_path_name:
+            if root_path_name not in self.get_path_names():
+                raise PathNameError
+            paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
+        context = context or self.get_context()
+        for path_ctl in paths:
+            path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
+
+    def clear_empty_dirs(self, context=None, names=None):
+        raise NotImplementedError
+
     def transfer_to(self,
                     other_tree: 'NamedPathTree',
                     pattern_names_map: dict | Callable = None,
@@ -995,65 +1052,6 @@ class NamedPathTree:
             remapped_paths=path_pairs,
             skipped_paths=skipped_paths
         )
-
-    # I/O
-
-    def show_tree(self, **kwargs):
-        """
-        Print tree structure to console
-
-        PATTERN_NAME| path
-
-        """
-        def _show(elements, print_path=True, print_name=True, max_name_width=0, indent=0, placeholder='-'):
-            for elem in elements:
-                print(''.join(
-                    [
-                        placeholder*indent*2 if (not print_path and print_name) else '',
-                        ('{:>{}}|'.format(elem['inst'].name, max_name_width+2) if print_name else '') if print_path else elem['inst'].name,
-                        placeholder*indent*2 if print_path else '',
-                        ('/'+elem['inst'].get_short()) if print_path else '']))
-                if elem['ch']:
-                    _show(elem['ch'], print_path=print_path, print_name=print_name, max_name_width=max_name_width,
-                          indent=indent+1, placeholder=placeholder)
-        tr = {x.name: {'inst': x, 'ch': []} for x in self.iter_patterns() if x.name}
-        tr[''] = {'inst': None, 'ch': []}
-        for name, item in tr.items():
-            if not item['inst']:
-                continue
-            par = item['inst'].get_parent()
-            if par:
-                tr[par.name]['ch'].append(item)
-            else:
-                tr['']['ch'].append(item)
-        print('ROOT: {}'.format(self.root))
-        print('='*50)
-        column_width = max([len(x) for x in tr.keys()])
-        _show(tr['']['ch'], max_name_width=column_width, **kwargs)
-        print('=' * 50)
-
-
-class NamedPathTreeDrive(NamedPathTree):
-    """
-    Named path tree with access to drive
-    """
-
-    path_class = NamedPathDrive
-
-    def makedirs(self, context=None, names=None, root_path_name=None, skip_context_errors=True, **kwargs):
-        """Create dirs"""
-        names = names or self.get_path_names()
-        paths = [self.get_path_instance(name) for name in names]
-        if root_path_name:
-            if root_path_name not in self.get_path_names():
-                raise PathNameError
-            paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
-        context = context or self.get_context()
-        for path_ctl in paths:
-            path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
-
-    def clear_empty_dirs(self, context=None, names=None):
-        raise NotImplementedError
 
 
 def chown(path: str, user: str, group: str):

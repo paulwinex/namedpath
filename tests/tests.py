@@ -53,6 +53,64 @@ def path_ctl1(tree):
 def path_ctl2(tree):
     return tree.get_path_instance('ASSET_MODELS')
 
+
+@pytest.fixture()
+def path_list1():
+    return dict(
+    PROJECT='{PROJECT_NAME}',
+    CONFIG={
+        'path': '[PROJECT]/.config'
+    },
+    SHOTS={
+        'path': '[PROJECT]/shots',
+        'symlink_to': '{MNT_SHOTS}'
+    },
+    SHOT={
+        'path': '[SHOTS]/{ENTITY_NAME}/{ENTITY_NAME}{FRAME:04d}.{EXT}',
+        'defaults': {'EXT': 'exr', "FRAME": ""},
+        'prefix': {'FRAME': "-"},
+        'types': {'FRAME': 'int'}
+    },
+)
+
+
+@pytest.fixture()
+def path_list2():
+    return dict(
+    PRJ='{PROJECT}',
+    CONF={
+        'path': '[PRJ]/.conf'
+    },
+    SHTS={
+        'path': '[PRJ]/shots',
+    },
+    SHT={
+            'path': '[SHTS]/prod/{OBJ_NAME}{FRM:03d}.{FILETYPE}',
+            'defaults': {'FILETYPE': 'exr', "FRM": ""},
+            'prefix': {'FRM': "_"},
+            'types': {'FRM': 'int'}
+        },
+)
+
+
+@pytest.fixture()
+def pattern_names_map():
+    return dict(
+        PROJECT='PRJ',
+        CONFIG='CONF',
+        SHOTS='SHTS',
+        SHOT='SHT',
+    )
+
+@pytest.fixture()
+def context_map():
+    return dict(
+        PROJECT_NAME='PROJECT',
+        ENTITY_NAME='OBJ_NAME',
+        FRAME='FRM',
+        EXT='FILETYPE',
+    )
+
 # =======================================================
 
 def test_unique_patterns(tree, context):
@@ -151,61 +209,23 @@ def test_context_value_type(tree, context):
     assert tree.parse('/tmp/my_struct/example/shot/sh001/publish/v015/sh001_v015.exr', with_context=True)[1]['VERSION'] == 15
 
 
+def test_optional_arguments():
+    patterns = {
+        "TEST": "/path/dirname/{filename}<_{suffix}>.{ext}"
+    }
+    tree = NamedPathTree('/mnt', patterns)
+    assert tree.get_path('TEST', {"filename": "my_file", 'ext': 'png'}) == "/mnt/path/dirname/my_file.png"
+    assert tree.get_path('TEST', {"filename": "my_file", 'ext': 'png', 'suffix': 'demo'}) == "/mnt/path/dirname/my_file_demo.png"
 
-@pytest.fixture()
-def path_list1():
-    return dict(
-    PROJECT='{PROJECT_NAME}',
-    CONFIG={
-        'path': '[PROJECT]/.config'
-    },
-    SHOTS={
-        'path': '[PROJECT]/shots',
-        'symlink_to': '{MNT_SHOTS}'
-    },
-    SHOT={
-        'path': '[SHOTS]/{ENTITY_NAME}/{ENTITY_NAME}{FRAME:04d}.{EXT}',
-        'defaults': {'EXT': 'exr', "FRAME": ""},
-        'prefix': {'FRAME': "-"},
-        'types': {'FRAME': 'int'}
-    },
-)
 
-@pytest.fixture()
-def path_list2():
-    return dict(
-    PRJ='{PROJECT}',
-    CONF={
-        'path': '[PRJ]/.conf'
-    },
-    SHTS={
-        'path': '[PRJ]/shots',
-    },
-    SHT={
-            'path': '[SHTS]/prod/{OBJ_NAME}{FRM:03d}.{FILETYPE}',
-            'defaults': {'FILETYPE': 'exr', "FRM": ""},
-            'prefix': {'FRM': "_"},
-            'types': {'FRM': 'int'}
-        },
-)
+def test_object_attributes_access():
 
-@pytest.fixture()
-def pattern_names_map():
-    return dict(
-        PROJECT='PRJ',
-        CONFIG='CONF',
-        SHOTS='SHTS',
-        SHOT='SHT',
-    )
-
-@pytest.fixture()
-def context_map():
-    return dict(
-        PROJECT_NAME='PROJECT',
-        ENTITY_NAME='OBJ_NAME',
-        FRAME='FRM',
-        EXT='FILETYPE',
-    )
+    patterns = {
+        "TEST": "/{project.created.date}/{project.name}"
+    }
+    tree = NamedPathTree('/mnt', patterns)
+    ctx = {'project': {'name': 'test_project', 'created': {'date': '2019-01-01'}}}
+    assert tree.get_path('TEST', ctx) == "/mnt/2019-01-01/test_project"
 
 
 # def test_transfer_structures(path_list1, path_list2, pattern_names_map, context_map):
