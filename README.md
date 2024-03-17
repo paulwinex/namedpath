@@ -133,6 +133,27 @@ pprint(result)
 
 Now you can move or copy all files to the new project structure!
 
+- Optional arguments
+
+You can use special syntax to add optional arguments to the pattern.
+
+```python
+path_list = dict(
+    MY_PATH='{root}/{filename}<_{suffix}>.{ext}',
+   
+)
+tree = NamedPathTree('/tmp', path_list)
+tree.get_path("MY_PATH", {"root": "/store", "filename": "my_file", "ext": "png"})
+# /tmp/store/my_file.png
+tree.get_path("MY_PATH", {"root": "/store", "filename": "my_file", "ext": "png", "suffix": "demo"})
+# /tmp/store/my_file_demo.png
+
+```
+
+All text inside `<>` will remove if variable `suffix` not exists in the context
+
+
+
 TODO:
 
 - set permissions and owner
