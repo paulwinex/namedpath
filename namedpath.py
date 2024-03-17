@@ -25,12 +25,568 @@ if not logger.handlers:
     logger = __setup_simple_logger(logger)
 
 
+class NamedPath(object):
+    """Class provide logic of one single named path"""
+    _default_dir_permission = 0o755
+    _default_file_permission = 0o644
+
+    def __init__(self, base_dir: str, name: str, options: dict, scope: dict, **kwargs):
+        if 'path' not in options:
+            raise ValueError('No parameter "path" in options: {}'.format(name))
+        self.name = name
+        self.options = options
+        self._scope = scope
+        self.kwargs = kwargs
+        self.base_dir = Path(base_dir)
+        self.default_context = kwargs.get('default_context', {})
+
+    def __str__(self):
+        return self.path
+
+    def __repr__(self):
+        return '<FSPath %s "%s">' % (self.name, self.path)
+
+    def get_context(self, context: dict = None) -> dict:
+        """
+        Collect context values
+        """
+        ctx = copy.deepcopy(self.default_context)
+        ctx.update(context)
+        for k, v in self.options.get('defaults', {}).items():
+            ctx.setdefault(k, v)
+        ctx.setdefault('user', getpass.getuser())
+        return ctx
+
+    @property
+    def path(self) -> str:
+        """
+        Raw path
+        """
+        return self.options['path']
+
+    # solve
+
+    def solve(self, context: dict, skip_context_errors: bool = False,
+              relative: bool = False, local: bool = False) -> str:
+        """
+        Resolve path from pattern with context to relative path
+        """
+        if local:
+            parent_path = ''
+        else:
+            parent = self.get_parent()
+            if parent:
+                parent_path = parent.solve(context, skip_context_errors, relative)
+            else:
+                if relative:
+                    parent_path = ''
+                else:
+                    parent_path = self.base_dir
+        parts = self.get_parts(context, solve=True, dirs_only=False, skip_context_errors=skip_context_errors)
+        if parts:
+            rel_path = Path(*parts)
+        else:
+            rel_path = ''
+        return Path(parent_path, rel_path).as_posix()
+
+    def iter_path(self, context: dict = None, solve: bool = True, dirs_only: bool = True,
+                  skip_context_errors: bool = False, full_path: bool = False, include_parents: bool = False):
+        """
+        Iterate path by parts
+        """
+        base = ''
+        if full_path:
+            parent = self.get_parent()
+            if parent:
+                base = parent.solve(context, skip_context_errors=skip_context_errors) if solve else parent.path
+                if include_parents:
+                    try:
+                        for part in parent.iter_path(context, solve=solve,
+                                                     dirs_only=dirs_only,
+                                                     full_path=full_path,
+                                                     skip_context_errors=False,
+                                                     include_parents=include_parents):
+                            yield part
+                    except PathContextError:
+                        return
+            else:
+                base = self.base_dir
+        p = ''
+        for part in self.get_parts(context, solve, dirs_only, skip_context_errors):
+            p = Path(p, part)
+            yield Path(base, p).as_posix()
+
+    def get_parts(self, context: dict = None, solve: bool = False,
+                  dirs_only: bool = False, skip_context_errors: bool = False) -> list:
+        context = self.get_context(context or {})
+        if context:
+            src_path = self.__class__.remove_optional(self.path, context)
+            _, context_variables = self.expand_attrs(src_path, context, skip_context_errors=skip_context_errors)
+        else:
+            src_path = self.path
+            context_variables = {}
+        parts = []
+        for part in Path(self.get_short(src_path)).parts:
+            if dirs_only and Path(part).suffix:
+                continue
+            if solve:
+                variables = self.get_pattern_variables(part)
+                miss = [x for x in variables if x not in context_variables]
+                if miss:
+                    if skip_context_errors:
+                        break
+                    else:
+                        raise PathContextError(str(miss))
+                part = self.expand_variables(part, context)
+            parts.append(part)
+        return parts
+
+    def parts_count(self):
+        count = len(self.path.split('/'))
+        parent = self.get_parent()
+        if parent:
+            count = parent.parts_count() + count
+        return count
+
+    def expand_variables(self, text: str, context: dict) -> str:
+        """
+        Resolve variables in pattern
+
+        Parameters
+        ----------
+        text: str
+        context: dict
+
+        Returns
+        -------
+        str
+        """
+        ctx = self.get_context(context or {})
+        text = self.remove_optional(text, ctx)
+        text, ctx = self.expand_attrs(text, ctx)
+        return CustomFormatString(text).format(**ctx)
+
+    @classmethod
+    def expand_attrs(cls, text: str, context: dict, **kwargs) -> tuple[str, dict]:
+        skip_context_errors = kwargs.get('skip_context_errors')
+        new_context = {}
+        new_text = text
+        variables = re.findall(r'{(.*?)}', text)
+
+        def get_next_value(obj, name):
+            if hasattr(obj, name):
+                val = getattr(obj, name)
+                if callable(val):
+                    return val()
+                return val
+            elif isinstance(obj, dict) and name in obj:
+                val = obj[name]
+                if callable(val):
+                    return val()
+                return val
+
+        for var in variables:
+            var_name, options = cls.split_var_name_and_options(var)
+            if '.' in var_name:
+                variables = var_name.split('.')
+                name = variables.pop(0)
+                obj = context[name]
+                while variables:
+                    name = variables.pop(0)
+                    obj = get_next_value(obj, name)
+                new_var = var_name.replace('.', '_')
+                new_context[new_var] = obj
+            else:
+                new_var = var_name
+                if var_name not in context:
+                    if not skip_context_errors:
+                        raise PathContextError
+                else:
+                    new_context[new_var] = context[var_name]
+            new_text = new_text.replace(f'{{{var}}}', f'{{{new_var+options}}}')
+        return new_text, new_context
+
+    @classmethod
+    def split_var_name_and_options(cls, var: str) -> tuple:
+        elements = re.split(r'([:|])', var, 1)
+        if len(elements) > 1:
+            var_name, options = elements[0], elements[1:]
+            options = ''.join(options)
+            return var_name, options
+        else:
+            return var, ''
+
+    @classmethod
+    def remove_optional(cls, text: str, context: dict):
+        pat = re.compile(r"<.*?\{([\w\d:]+)}>")
+        for var in pat.finditer(text):
+            if var.group(1).split(':')[0].split('.')[0] not in context:
+                text = text.replace(var.group(0), '')
+            text = text.replace(var.group(0), var.group(0).strip('<>'))
+        return text
+
+    def convert_types(self, context: dict) -> dict:
+        """
+        Convert context types after parsing
+        """
+        import builtins
+        types = self.options.get('types')
+        if not types:
+            return context
+        for name, tp in types.items():
+            if name in context:
+                func = getattr(builtins, tp)
+                context[name] = func(context[name])
+        return context
+
+    def get_pattern_variables(self, pattern: str = None) -> list:
+        """
+        Extract variables names from pattern
+
+        Returns
+        -------
+        list
+        """
+        variables = []
+        for val in re.findall(r"{(.*?)}", pattern or self.get_relative()):
+            variables.append(val.split(':')[0].split('|')[0])
+        return list(sorted(list(set([x.replace('.', '_') for x in variables]))))
+
+    # paths
+
+    def get_relative(self) -> str:
+        """
+        Relative to base dir
+
+        Returns
+        -------
+        str
+        """
+        par = self.get_parent()
+        if par:
+            return str(Path(par.get_relative(), self.get_short()))
+        else:
+            return self.path
+
+    def get_short(self, custom_path = None) -> str:
+        """
+        Relative to parent
+
+        Returns
+        -------
+        str
+        """
+        return Path((custom_path or self.path).split(']', 1)[-1].lstrip('\\/')).as_posix()
+
+    def get_absolute(self) -> str:
+        """
+        Absolute path
+        """
+        return str(Path(self.base_dir, self.get_relative()))
+
+    # parent
+
+    def get_parent_name(self) -> str:
+        """
+        Get name of parent pattern
+        """
+        match = re.search(r"^\[(\w+)]/?(.*)", self.path)
+        if match:
+            return match.group(1)
+
+    def get_parent(self) -> "NamedPath":
+        """
+        Get controller of parent pattern
+
+        Returns
+        -------
+        NamedPath
+        """
+        parent_name = self.get_parent_name()
+        if parent_name:
+            try:
+                return self._scope[parent_name]
+            except KeyError:
+                raise PathNameError('No path named {}'.format(parent_name))
+
+    def get_all_parent_names(self) -> list:
+        """
+        Get list of all parent patterns
+        """
+        names = []
+        p = self
+        while True:
+            parent_name = p.get_parent_name()
+            if not parent_name:
+                break
+            names.append(parent_name)
+            p = p.get_parent()
+        names.reverse()
+        return names
+
+    # patterns
+
+    def as_glob(self, prefix: str = None, context: dict = None):
+        """
+        Convert pattern to glob-pattern
+
+        Parameters
+        ----------
+        prefix: str
+            Root path
+        context: dict
+
+        Returns
+        -------
+        str
+        """
+        path = self.get_relative()
+        if prefix:
+            path = Path(prefix, path.lstrip('\\/'))
+
+        def get_context_val(match):
+            val = match.group(0)
+            if context:
+                try:
+                    return self.expand_variables(val, context)
+                except KeyError:
+                    pass
+            return '*'
+
+        return re.sub(r"{.*?}", get_context_val, path)
+
+    def as_regex(self, prefix: str = None, named_values: bool = True, context: dict = None) -> str:
+        """
+        Convert pattern to regex
+
+        Parameters
+        ----------
+        prefix: str
+            Root path
+        named_values: bool
+            Make named groups in regex
+        context: dict
+
+        Returns
+        -------
+        str
+        """
+        simple_pattern = r'[^/\\]+'
+        named_pattern = r'(?P<%s>[^/\\]+)'
+        path = self.get_relative()
+        if prefix:
+            path = normpath(join(prefix, path.lstrip('\\/')))
+        names = set()
+
+        def get_subpattern(match):
+            v = match.group(0)
+            name = v.strip('{}').split(':')[0].split('|')[0]#.lower()
+            if context:
+                try:
+                    expanded = self.expand_variables(v, context)
+                    names.add(name)
+                    return expanded
+                except KeyError:
+                    pass
+            if name in names:
+                return simple_pattern
+            names.add(name)
+            if named_values:
+                return named_pattern % name
+            else:
+                return simple_pattern
+
+        pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
+        pattern = pattern.replace('.', '\\.')
+        pattern = '^%s$' % pattern
+        return pattern
+
+    def parse(self, path: str) -> dict:
+        """
+        Extract context from path
+        """
+        pattern = self.as_regex(self.base_dir.as_posix())
+        m = re.match(pattern, str(path), re.IGNORECASE)
+        if m:
+            context = self.convert_types(m.groupdict())
+            return {k.upper(): v for k, v in context.items()}
+
+
+class NamedPathDrive(NamedPath):
+    """
+    named path class with dick drive access
+    """
+
+    @property
+    def default_dir_permission(self) -> int:
+        return self.kwargs.get('default_dir_permission') or self._default_dir_permission
+
+    @property
+    def default_file_permission(self) -> int:
+        return self.kwargs.get('default_file_permission') or self._default_dir_permission
+
+    @property
+    def default_user(self) -> str:
+        return getpass.getuser()
+
+    @property
+    def default_group(self) -> str:
+        return self.kwargs.get('default_group') or self.default_user
+
+    def update_owner(self, context, skip_context_errors=False,
+                     parents=False, skip_non_exists=False, **kwargs):
+        if parents:
+            parent = self.get_parent()
+            if parent:
+                parent.update_owner(context, skip_context_errors, parents, skip_non_exists)
+
+        for path, user, group in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
+                                     self.get_user_list(**kwargs),
+                                     self.get_group_list(**kwargs)):
+            # user
+            user = user or kwargs.get('default_user') or self.default_user
+            # group
+            group = group or kwargs.get('default_group') or self.default_group
+            os.makedirs(path)
+            chown(path, user, group)
+
+
+    def update_attributes(self, context, **kwargs):
+        self.update_permissions(context, **kwargs)
+        self.update_owner(context, **kwargs)
+
+    def update_permissions(self, context, skip_context_errors=False, parents=False,
+                           skip_non_exists=False, **kwargs):
+        if parents:
+            parent = self.get_parent()
+            if parent:
+                parent.update_permissions(context, skip_context_errors, parents, skip_non_exists, **kwargs)
+
+        for path, perm in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
+                              self.get_permission_list(**kwargs)):
+            if skip_non_exists and not os.path.exists(path):
+                continue
+            perm = perm or kwargs.get('default_permission') or (
+                self.default_dir_permission if not os.path.splitext(path)[1] else self.default_file_permission)
+            chmod(path, perm)
+
+    def get_permission_list(self, **kwargs) -> list:
+        """chmod parameter"""
+        mode_list = self._get_list(self.options.get('perm'))
+        mode_list = [self._valid_mode(x) for x in mode_list]
+        for i in range(len(mode_list)):
+            if not mode_list[i]:
+                mode_list[i] = kwargs.get('default_permission') or self.default_dir_permission
+        return mode_list
+
+    def get_group_list(self, default_group: str = None, **kwargs) -> list:
+        return self._get_option_list_by_value_name('groups', 'default_group', default_group, **kwargs)
+
+    def get_user_list(self, default_user=None, **kwargs) -> list:
+        return self._get_option_list_by_value_name('users', 'default_user', default_user, **kwargs)
+
+    # I/O
+
+    def makedirs(self, context, skip_context_errors=False, **kwargs):
+        parent: NamedPath = self.get_parent()
+        if parent:
+            try:
+                if not parent.makedirs(context, skip_context_errors=False, **kwargs):
+                    return False
+            except PathContextError:
+                if skip_context_errors:
+                    return False
+        parts = list(zip(
+                self.iter_path(context, solve=True, dirs_only=True,
+                               skip_context_errors=skip_context_errors, full_path=True),
+                self.get_permission_list(),
+                self.get_group_list(),
+                self.get_user_list()))
+        parts_count = len(parts)
+        for i, (path, perm, group, user) in enumerate(parts):
+            # итерация по частям пути от начала к концу
+            if not os.path.exists(path):
+                # если путь еще не существует, то создаём его
+                # permission
+                perm = kwargs.get('default_permission') or perm
+                if not perm:
+                    perm = self.default_dir_permission
+                # user
+                user = user or kwargs.get('default_user') or self.default_user
+                # group
+                group = group or kwargs.get('default_group') or self.default_group
+                if i == parts_count-1 and self.options.get('symlink_to'):
+                    # если это последняя часть пути и есть опция линковки, то делаем линк
+                    link_source = self.expand_variables(self.options.get('symlink_to'), context)
+                    if not os.path.exists(link_source):
+                        raise IOError('Source path for link not exists: {}'.format(link_source))
+                    os.symlink(link_source, path)
+                else:
+                    os.makedirs(path)
+                    chmod(path, perm)
+                    chown(path, user, group)
+                logger.info('Make {}: {}'.format(self.name, path))
+            elif i == parts_count-1 and self.options.get('symlink_to'):
+                # если путь уже существует
+                if not os.path.islink(path):
+                    # и это не линк, то выбрасываем ошибку
+                    raise IOError('Path for symlink already exists and it is not a symlink: {}'.format(path))
+                link_source = self.expand_variables(self.options.get('symlink_to'), context)
+                real_path = os.readlink(path)
+                if real_path != link_source:
+                    raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
+                        path, real_path, link_source))
+        return True
+
+    def remove_empty_dirs(self, context):
+        raise NotImplementedError
+    # utils
+
+    def _get_option_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs) -> list:
+        default_value = default_value or (self.kwargs.get(default_value_key) if default_value_key else None)
+        # list_length = len(self.get_parts())
+        list_length = self.parts_count()
+        value_list = self._get_list(self.options.get(value))
+        value_list = [x if x is not None else default_value for x in value_list]
+        if len(value_list) < list_length:
+            value_list.extend([default_value]*(list_length-list_length))
+        return [self.expand_variables(x, kwargs) if x else x for x in value_list]
+
+    def _get_list(self, values, default=None):
+        list_length = self.parts_count()
+        if not isinstance(values, (list, tuple)):
+            values = [values]*list_length
+        values = [x if x is not None else default for x in values]
+        return values
+
+    def _valid_mode(self, value):
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return oct(value)
+        if isinstance(value, bytes):
+            value = value.decode()
+        if isinstance(value, str):
+            if value.isdigit():
+                # '0755'
+                return oct(int('0o%s' % value, 8))
+            elif re.match(r"^\do\d+$", value):
+                # '0o755'
+                return oct(int(value, 8))
+        raise ValueError('Wrong mode: {} ({})'.format(value, type(value)))
+
+
 class NamedPathTree:
     """
     Class provide you to control folder structure paths
     """
+    path_class = NamedPath
 
-    def __init__(self, root_path: str or Path, path_list: dict = None, default_context: dict = None, **kwargs):
+    def __init__(self, root_path: str or Path,
+                 path_list: dict = None,
+                 default_context: dict = None,
+                 path_class=None,
+                 **kwargs):
         self.kwargs = kwargs
         if not isinstance(root_path, (str, Path)):
             raise ValueError('Root directory must be string type')
@@ -137,7 +693,7 @@ class NamedPathTree:
             # check options
             if 'path' not in options and path_name not in self._scope:
                 raise ValueError('No "path" parameter in pattern options: {}'.format(path_name))
-            self._scope[path_name] = NamedPath(self.root, path_name, options, self._scope,
+            self._scope[path_name] = self.path_class(self.root, path_name, options, self._scope,
                                                default_context=self.default_context, **self.kwargs)
         for name in to_remove:
             self._scope.pop(name, None)
@@ -442,21 +998,6 @@ class NamedPathTree:
 
     # I/O
 
-    def makedirs(self, context=None, names=None, root_path_name=None, skip_context_errors=True, **kwargs):
-        """Create dirs"""
-        names = names or self.get_path_names()
-        paths = [self.get_path_instance(name) for name in names]
-        if root_path_name:
-            if root_path_name not in self.get_path_names():
-                raise PathNameError
-            paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
-        context = context or self.get_context()
-        for path_ctl in paths:
-            path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
-
-    def clear_empty_dirs(self, context=None, names=None):
-        raise NotImplementedError
-
     def show_tree(self, **kwargs):
         """
         Print tree structure to console
@@ -492,525 +1033,27 @@ class NamedPathTree:
         print('=' * 50)
 
 
-class NamedPath(object):
-    """Class provide logic of one single named path"""
-    _default_dir_permission = 0o755
-    _default_file_permission = 0o644
+class NamedPathTreeDrive(NamedPathTree):
+    """
+    Named path tree with access to drive
+    """
 
-    def __init__(self, base_dir: str, name: str, options: dict, scope: dict, **kwargs):
-        if 'path' not in options:
-            raise ValueError('No parameter "path" in options: {}'.format(name))
-        self.name = name
-        self.options = options
-        self._scope = scope
-        self.kwargs = kwargs
-        self.base_dir = Path(base_dir)
-        self.default_context = kwargs.get('default_context', {})
+    path_class = NamedPathDrive
 
-    def __str__(self):
-        return self.path
+    def makedirs(self, context=None, names=None, root_path_name=None, skip_context_errors=True, **kwargs):
+        """Create dirs"""
+        names = names or self.get_path_names()
+        paths = [self.get_path_instance(name) for name in names]
+        if root_path_name:
+            if root_path_name not in self.get_path_names():
+                raise PathNameError
+            paths = [path for path in paths if root_path_name in path.get_all_parent_names()]
+        context = context or self.get_context()
+        for path_ctl in paths:
+            path_ctl.makedirs(context, skip_context_errors=skip_context_errors, **kwargs)
 
-    def __repr__(self):
-        return '<FSPath %s "%s">' % (self.name, self.path)
-
-    def get_context(self, context: dict = None) -> dict:
-        """
-        Collect context values
-        """
-        ctx = copy.deepcopy(self.default_context)
-        ctx.update(context)
-        for k, v in self.options.get('defaults', {}).items():
-            ctx.setdefault(k, v)
-        ctx.setdefault('user', getpass.getuser())
-        return ctx
-
-    @property
-    def path(self) -> str:
-        """
-        Raw path
-        """
-        return self.options['path']
-
-    @property
-    def default_dir_permission(self) -> int:
-        return self.kwargs.get('default_dir_permission') or self._default_dir_permission
-
-    @property
-    def default_file_permission(self) -> int:
-        return self.kwargs.get('default_file_permission') or self._default_dir_permission
-
-    @property
-    def default_user(self) -> str:
-        return getpass.getuser()
-
-    @property
-    def default_group(self) -> str:
-        return self.kwargs.get('default_group') or self.default_user
-
-    # solve
-
-    def solve(self, context: dict, skip_context_errors: bool = False,
-              relative: bool = False, local: bool = False) -> str:
-        """
-        Resolve path from pattern with context to relative path
-        """
-        if local:
-            parent_path = ''
-        else:
-            parent = self.get_parent()
-            if parent:
-                parent_path = parent.solve(context, skip_context_errors, relative)
-            else:
-                if relative:
-                    parent_path = ''
-                else:
-                    parent_path = self.base_dir
-        parts = self.get_parts(context, solve=True, dirs_only=False, skip_context_errors=skip_context_errors)
-        if parts:
-            rel_path = Path(*parts)
-        else:
-            rel_path = ''
-        return Path(parent_path, rel_path).as_posix()
-
-    def iter_path(self, context: dict = None, solve: bool = True, dirs_only: bool = True,
-                  skip_context_errors: bool = False, full_path: bool = False, include_parents: bool = False):
-        """
-        Iterate path by parts
-        """
-        base = ''
-        if full_path:
-            parent = self.get_parent()
-            if parent:
-                base = parent.solve(context, skip_context_errors=skip_context_errors) if solve else parent.path
-                if include_parents:
-                    try:
-                        for part in parent.iter_path(context, solve=solve,
-                                                     dirs_only=dirs_only,
-                                                     full_path=full_path,
-                                                     skip_context_errors=False,
-                                                     include_parents=include_parents):
-                            yield part
-                    except PathContextError:
-                        return
-            else:
-                base = self.base_dir
-        p = ''
-        for part in self.get_parts(context, solve, dirs_only, skip_context_errors):
-            p = Path(p, part)
-            yield Path(base, p).as_posix()
-
-    def get_parts(self, context: dict = None, solve: bool = False,
-                  dirs_only: bool = False, skip_context_errors: bool = False) -> list:
-        context = self.get_context(context or {})
-        src_path = NamedPath.remove_optional(self.path, context)
-        _, context_variables = self.expand_attrs(src_path, context)
-        parts = []
-        for part in Path(self.get_short(src_path)).parts:
-            if dirs_only and Path(part).suffix:
-                continue
-            if solve:
-                variables = self.get_pattern_variables(part)
-                miss = [x for x in variables if x not in context_variables]
-                if miss:
-                    if skip_context_errors:
-                        break
-                    else:
-                        raise PathContextError(str(miss))
-                part = self.expand_variables(part, context)
-            parts.append(part)
-        return parts
-
-    def expand_variables(self, text: str, context: dict) -> str:
-        """
-        Resolve variables in pattern
-
-        Parameters
-        ----------
-        text: str
-        context: dict
-
-        Returns
-        -------
-        str
-        """
-        ctx = self.get_context(context or {})
-        text = self.remove_optional(text, ctx)
-        text, ctx = self.expand_attrs(text, ctx)
-        return CustomFormatString(text).format(**ctx)
-
-    @classmethod
-    def expand_attrs(cls, text: str, context: dict) -> tuple[str, dict]:
-        new_context = {}
-        new_text = text
-        variables = re.findall(r'{(.*?)}', text)
-
-        def get_next_value(obj, name):
-            if hasattr(obj, name):
-                val = getattr(obj, name)
-                if callable(val):
-                    return val()
-                return val
-            elif isinstance(obj, dict) and name in obj:
-                val = obj[name]
-                if callable(val):
-                    return val()
-                return val
-
-        for var in variables:
-            if ':' in var:
-                var = var.split(':')[0]
-            if '.' in var:
-                variables = var.split('.')
-                name = variables.pop(0)
-                obj = context[name]
-                while variables:
-                    name = variables.pop(0)
-                    obj = get_next_value(obj, name)
-                new_var = var.replace('.', '_')
-                new_context[new_var] = obj
-            else:
-                new_var = var
-                new_context[new_var] = context[var]
-            new_text = new_text.replace('{' + var + '}', '{' + new_var + '}')
-        return new_text, new_context
-
-    @classmethod
-    def remove_optional(cls, text: str, context: dict):
-        pat = re.compile(r"<.*?\{([\w\d:]+)}>")
-        for var in pat.finditer(text):
-            if var.group(1).split(':')[0].split('.')[0] not in context:
-                text = text.replace(var.group(0), '')
-            text = text.replace(var.group(0), var.group(0).strip('<>'))
-        return text
-
-    def convert_types(self, context: dict) -> dict:
-        """
-        Convert context types after parsing
-        """
-        import builtins
-        types = self.options.get('types')
-        if not types:
-            return context
-        for name, tp in types.items():
-            if name in context:
-                func = getattr(builtins, tp)
-                context[name] = func(context[name])
-        return context
-
-    def get_pattern_variables(self, pattern: str = None) -> list:
-        """
-        Extract variables names from pattern
-
-        Returns
-        -------
-        list
-        """
-        variables = []
-        for val in re.findall(r"{(.*?)}", pattern or self.get_relative()):
-            variables.append(val.split(':')[0].split('|')[0])
-        return list(sorted(list(set([x.replace('.', '_') for x in variables]))))
-
-    # paths
-
-    def get_relative(self) -> str:
-        """
-        Relative to base dir
-
-        Returns
-        -------
-        str
-        """
-        par = self.get_parent()
-        if par:
-            return str(Path(par.get_relative(), self.get_short()))
-        else:
-            return self.path
-
-    def get_short(self, custom_path = None) -> str:
-        """
-        Relative to parent
-
-        Returns
-        -------
-        str
-        """
-        return Path((custom_path or self.path).split(']', 1)[-1].lstrip('\\/')).as_posix()
-
-    def get_absolute(self) -> str:
-        """
-        Absolute path
-        """
-        return str(Path(self.base_dir, self.get_relative()))
-
-    # parent
-
-    def get_parent_name(self) -> str:
-        """
-        Get name of parent pattern
-        """
-        match = re.search(r"^\[(\w+)]/?(.*)", self.path)
-        if match:
-            return match.group(1)
-
-    def get_parent(self) -> str:
-        """
-        Get controller of parent pattern
-
-        Returns
-        -------
-        NamedPath
-        """
-        parent_name = self.get_parent_name()
-        if parent_name:
-            try:
-                return self._scope[parent_name]
-            except KeyError:
-                raise PathNameError('No path named {}'.format(parent_name))
-
-    def get_all_parent_names(self) -> list:
-        """
-        Get list of all parent patterns
-        """
-        names = []
-        p = self
-        while True:
-            parent_name = p.get_parent_name()
-            if not parent_name:
-                break
-            names.append(parent_name)
-            p = p.get_parent()
-        names.reverse()
-        return names
-
-    # patterns
-
-    def as_glob(self, prefix: str = None, context: dict = None):
-        """
-        Convert pattern to glob-pattern
-
-        Parameters
-        ----------
-        prefix: str
-            Root path
-        context: dict
-
-        Returns
-        -------
-        str
-        """
-        path = self.get_relative()
-        if prefix:
-            path = Path(prefix, path.lstrip('\\/'))
-
-        def get_context_val(match):
-            val = match.group(0)
-            if context:
-                try:
-                    return self.expand_variables(val, context)
-                except KeyError:
-                    pass
-            return '*'
-
-        return re.sub(r"{.*?}", get_context_val, path)
-
-    def as_regex(self, prefix: str = None, named_values: bool = True, context: dict = None) -> str:
-        """
-        Convert pattern to regex
-
-        Parameters
-        ----------
-        prefix: str
-            Root path
-        named_values: bool
-            Make named groups in regex
-        context: dict
-
-        Returns
-        -------
-        str
-        """
-        simple_pattern = r'[^/\\]+'
-        named_pattern = r'(?P<%s>[^/\\]+)'
-        path = self.get_relative()
-        if prefix:
-            path = normpath(join(prefix, path.lstrip('\\/')))
-        names = set()
-
-        def get_subpattern(match):
-            v = match.group(0)
-            name = v.strip('{}').split(':')[0].split('|')[0]#.lower()
-            if context:
-                try:
-                    expanded = self.expand_variables(v, context)
-                    names.add(name)
-                    return expanded
-                except KeyError:
-                    pass
-            if name in names:
-                return simple_pattern
-            names.add(name)
-            if named_values:
-                return named_pattern % name
-            else:
-                return simple_pattern
-
-        pattern = re.sub(r"{.*?}", get_subpattern, path.replace('\\', '\\\\'))
-        pattern = pattern.replace('.', '\\.')
-        pattern = '^%s$' % pattern
-        return pattern
-
-    def parse(self, path: str) -> dict:
-        """
-        Extract context from path
-        """
-        pattern = self.as_regex(self.base_dir.as_posix())
-        m = re.match(pattern, str(path), re.IGNORECASE)
-        if m:
-            context = self.convert_types(m.groupdict())
-            return {k.upper(): v for k, v in context.items()}
-
-    def get_permission_list(self, **kwargs) -> list:
-        """chmod parameter"""
-        mode_list = self._get_list(self.options.get('perm'))
-        mode_list = [self._valid_mode(x) for x in mode_list]
-        for i in range(len(mode_list)):
-            if not mode_list[i]:
-                mode_list[i] = kwargs.get('default_permission') or self.default_dir_permission
-        return mode_list
-
-    def get_group_list(self, default_group: str = None, **kwargs) -> list:
-        return self._get_option_list_by_value_name('groups', 'default_group', default_group, **kwargs)
-
-    def get_user_list(self, default_user=None, **kwargs) -> list:
-        return self._get_option_list_by_value_name('users', 'default_user', default_user, **kwargs)
-
-    # I/O
-
-    def makedirs(self, context, skip_context_errors=False, **kwargs):
-        parent = self.get_parent()
-        if parent:
-            try:
-                if not parent.makedirs(context, skip_context_errors=False, **kwargs):
-                    return False
-            except PathContextError:
-                if skip_context_errors:
-                    return False
-        parts = list(zip(
-                self.iter_path(context, solve=True, dirs_only=True,
-                               skip_context_errors=skip_context_errors, full_path=True),
-                self.get_permission_list(),
-                self.get_group_list(),
-                self.get_user_list()))
-        parts_count = len(parts)
-        for i, (path, perm, group, user) in enumerate(parts):
-            # итерация по частям пути от начала к концу
-            if not os.path.exists(path):
-                # если путь еще не существует, то создаём его
-                # permission
-                perm = kwargs.get('default_permission') or perm
-                if not perm:
-                    perm = self.default_dir_permission
-                # user
-                user = user or kwargs.get('default_user') or self.default_user
-                # group
-                group = group or kwargs.get('default_group') or self.default_group
-                if i == parts_count-1 and self.options.get('symlink_to'):
-                    # если это последняя часть пути и есть опция линковки, то делаем линк
-                    link_source = self.expand_variables(self.options.get('symlink_to'), context)
-                    if not os.path.exists(link_source):
-                        raise IOError('Source path for link not exists: {}'.format(link_source))
-                    os.symlink(link_source, path)
-                else:
-                    os.makedirs(path)
-                    chmod(path, perm)
-                    chown(path, user, group)
-                logger.info('Make {}: {}'.format(self.name, path))
-            elif i == parts_count-1 and self.options.get('symlink_to'):
-                # если путь уже существует
-                if not os.path.islink(path):
-                    # и это не линк, то выбрасываем ошибку
-                    raise IOError('Path for symlink already exists and it is not a symlink: {}'.format(path))
-                link_source = self.expand_variables(self.options.get('symlink_to'), context)
-                real_path = os.readlink(path)
-                if real_path != link_source:
-                    raise IOError('Linked path {} referenced to different source: {}, correct source: {}'.format(
-                        path, real_path, link_source))
-        return True
-
-    def remove_empty_dirs(self, context):
+    def clear_empty_dirs(self, context=None, names=None):
         raise NotImplementedError
-
-    # attributes
-
-    def update_attributes(self, context, **kwargs):
-        self.update_permissions(context, **kwargs)
-        self.update_owner(context, **kwargs)
-
-    def update_permissions(self, context, skip_context_errors=False, parents=False,
-                           skip_non_exists=False, **kwargs):
-        if parents:
-            parent = self.get_parent()
-            if parent:
-                parent.update_permissions(context, skip_context_errors, parents, skip_non_exists, **kwargs)
-
-        for path, perm in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
-                              self.get_permission_list(**kwargs)):
-            if skip_non_exists and not os.path.exists(path):
-                continue
-            perm = perm or kwargs.get('default_permission') or (
-                self.default_dir_permission if not os.path.splitext(path)[1] else self.default_file_permission)
-            chmod(path, perm)
-
-    def update_owner(self, context, skip_context_errors=False,
-                     parents=False, skip_non_exists=False, **kwargs):
-        if parents:
-            parent = self.get_parent()
-            if parent:
-                parent.update_owner(context, skip_context_errors, parents, skip_non_exists)
-
-        for path, user, group in zip(self.iter_path(context, dirs_only=False, skip_context_errors=True, full_path=True),
-                                     self.get_user_list(**kwargs),
-                                     self.get_group_list(**kwargs)):
-            # user
-            user = user or kwargs.get('default_user') or self.default_user
-            # group
-            group = group or kwargs.get('default_group') or self.default_group
-            os.makedirs(path)
-            chown(path, user, group)
-
-    # utils
-
-    def _get_option_list_by_value_name(self, value, default_value_key=None, default_value=None, **kwargs) -> list:
-        default_value = default_value or (self.kwargs.get(default_value_key) if default_value_key else None)
-        list_length = len(self.get_parts())
-        value_list = self._get_list(self.options.get(value))
-        value_list = [x if x is not None else default_value for x in value_list]
-        if len(value_list) < list_length:
-            value_list.extend([default_value]*(list_length-list_length))
-        return [self.expand_variables(x, kwargs) if x else x for x in value_list]
-
-    def _get_list(self, values, default=None):
-        list_length = len(self.get_parts())
-        if not isinstance(values, (list, tuple)):
-            values = [values]*list_length
-        values = [x if x is not None else default for x in values]
-        return values
-
-    def _valid_mode(self, value):
-        if value is None:
-            return None
-        if isinstance(value, int):
-            return oct(value)
-        if isinstance(value, bytes):
-            value = value.decode()
-        if isinstance(value, str):
-            if value.isdigit():
-                # '0755'
-                return oct(int('0o%s' % value, 8))
-            elif re.match(r"^\do\d+$", value):
-                # '0o755'
-                return oct(int(value, 8))
-        raise ValueError('Wrong mode: {} ({})'.format(value, type(value)))
 
 
 def chown(path: str, user: str, group: str):
@@ -1036,10 +1079,6 @@ def chmod(path: str, mode: str):
         os.chmod(path, mode)
     except Exception as e:
         raise type(e)("%s %s" % (e, mode))
-
-
-# def lower_keys(dct: dict) -> dict:
-    # return {k.lower(): v for k, v in dct.items()}
 
 
 class CustomFormatString(str):
