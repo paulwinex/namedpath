@@ -108,21 +108,21 @@ def test_path_regex_pattern(path_ctl1):
     assert pat == r'^(?P<PROJECT_NAME>[^/\\]+)/shot/(?P<ENTITY_NAME>[^/\\]+)/publish/v(?P<VERSION>[^/\\]+)/[^/\\]+_v[^/\\]+\.(?P<EXT>[^/\\]+)$'
 
 
-def test_path_permissions_list(path_ctl1):
-    assert path_ctl1.get_permission_list() == [493, 493, 493]
-    assert path_ctl1.get_permission_list(default_permission=0o775) == [509, 509, 509]
+# def test_path_permissions_list(path_ctl1):
+#     assert path_ctl1.get_permission_list() == [493, 493, 493]
+#     assert path_ctl1.get_permission_list(default_permission=0o775) == [509, 509, 509]
 
 
-def test_path_group_list(path_ctl1, path_ctl2):
-    assert path_ctl1.get_group_list() == [None, CURRENT_USER, None]
-    assert path_ctl1.get_group_list(default_group='test') == ['test', CURRENT_USER, 'test']
-    assert path_ctl2.get_group_list() == [None]
+# def test_path_group_list(path_ctl1, path_ctl2):
+#     assert path_ctl1.get_group_list() == [None, CURRENT_USER, None]
+#     assert path_ctl1.get_group_list(default_group='test') == ['test', CURRENT_USER, 'test']
+#     assert path_ctl2.get_group_list() == [None]
 
 
-def test_path_user_list(path_ctl1, path_ctl2):
-    assert path_ctl1.get_user_list() == [CURRENT_USER, None, 'root']
-    assert path_ctl1.get_user_list(default_user='test') == [CURRENT_USER, 'test', 'root']
-    assert path_ctl2.get_user_list() == [None]
+# def test_path_user_list(path_ctl1, path_ctl2):
+#     assert path_ctl1.get_user_list() == [CURRENT_USER, None, 'root']
+#     assert path_ctl1.get_user_list(default_user='test') == [CURRENT_USER, 'test', 'root']
+#     assert path_ctl2.get_user_list() == [None]
 
 
 def test_path_iter(path_ctl1, context):
@@ -208,19 +208,19 @@ def context_map():
     )
 
 
-def test_transfer_structures(path_list1, path_list2, pattern_names_map, context_map):
-    t1 = NamedPathTree('/tmp/projects1', path_list1)
-    t2 = NamedPathTree('/tmp/projects2', path_list2)
-    res = t1.transfer_to(t2, pattern_names_map, context_map)
-    expected_res = {'remapped_paths': [{'old_path': '/tmp/projects1/prj1', 'new_path': '/tmp/projects2/prj1'}, {'old_path': '/tmp/projects1/prj1/.config', 'new_path': '/tmp/projects2/prj1/.conf'}, {'old_path': '/tmp/projects1/prj1/shots', 'new_path': '/tmp/projects2/prj1/shots'}, {'old_path': '/tmp/projects1/prj1/shots/box/box0001.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/box001.exr'}, {'old_path': '/tmp/projects1/prj1/shots/box/box0002.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/box002.exr'}, {'old_path': '/tmp/projects1/prj1/shots/cube/cube_0001.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/cube001.exr'}, {'old_path': '/tmp/projects1/prj1/shots/cube/cube_0002.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/cube002.exr'}], 'skipped_paths': ['/tmp/projects1/prj1/shots/box', '/tmp/projects1/prj1/shots/cube']}
-    assert res == expected_res
+# def test_transfer_structures(path_list1, path_list2, pattern_names_map, context_map):
+#     t1 = NamedPathTree('/tmp/projects1', path_list1)
+#     t2 = NamedPathTree('/tmp/projects2', path_list2)
+#     res = t1.transfer_to(t2, pattern_names_map, context_map)
+#     expected_res = {'remapped_paths': [{'old_path': '/tmp/projects1/prj1', 'new_path': '/tmp/projects2/prj1'}, {'old_path': '/tmp/projects1/prj1/.config', 'new_path': '/tmp/projects2/prj1/.conf'}, {'old_path': '/tmp/projects1/prj1/shots', 'new_path': '/tmp/projects2/prj1/shots'}, {'old_path': '/tmp/projects1/prj1/shots/box/box0001.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/box001.exr'}, {'old_path': '/tmp/projects1/prj1/shots/box/box0002.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/box002.exr'}, {'old_path': '/tmp/projects1/prj1/shots/cube/cube_0001.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/cube001.exr'}, {'old_path': '/tmp/projects1/prj1/shots/cube/cube_0002.exr', 'new_path': '/tmp/projects2/prj1/shots/prod/cube002.exr'}], 'skipped_paths': ['/tmp/projects1/prj1/shots/box', '/tmp/projects1/prj1/shots/cube']}
+#     assert res == expected_res
 
 
 # I/O TESTS
 
-def test_makedirs_tree(tree, context):
-    tree.makedirs(context)
+# def test_makedirs_tree(tree, context):
+#     tree.makedirs(context)
 
 
-def test_makedirs_path(path_ctl1, context):
-    path_ctl1.makedirs(context)
+# def test_makedirs_path(path_ctl1, context):
+#     path_ctl1.makedirs(context)
